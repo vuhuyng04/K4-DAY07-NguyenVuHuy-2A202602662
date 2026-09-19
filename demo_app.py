@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import sys
 
 import pandas as pd
@@ -163,6 +164,33 @@ def agent_answer(store: EmbeddingStore, llm, question: str, results: list[dict])
         return llm(agent.build_prompt(question, results))
 
 
+_CITE = re.compile(r"\[(\d+)\]")
+
+
+def show_answer(answer: str, results: list[dict], must_contain: str = "", compact: bool = False) -> None:
+    """Hiện câu trả lời + bảng 'Nguồn trích dẫn' nối [n] → chunk → doc_id → source_url."""
+    st.success(answer)
+    cited = sorted({int(n) for n in _CITE.findall(answer) if 1 <= int(n) <= len(results)})
+    if not results:
+        return
+    if not cited:
+        if "không tìm thấy" not in answer.lower():
+            st.warning("⚠️ Agent không trích dẫn [n] — không truy vết được câu trả lời lấy từ đâu.")
+        return
+    with st.expander(f"📎 Nguồn trích dẫn: {', '.join(f'[{n}]' for n in cited)}", expanded=not compact):
+        for n in cited:
+            r = results[n - 1]
+            meta = r["metadata"]
+            hit = bool(must_contain) and must_contain.lower() in r["content"].lower()
+            url = meta.get("source_url")
+            link = f"[{meta.get('doc_id')}]({url})" if url else f"`{meta.get('doc_id')}`"
+            st.markdown(
+                f"**[{n}]** {link} · audience=`{meta.get('audience')}` · chunk {meta.get('chunk_index')} · score {r['score']:.3f}"
+                + ("  ✅ chunk này chứa gold answer" if hit else ("  ⚠️ chunk này KHÔNG chứa gold answer" if must_contain else ""))
+            )
+            st.caption(r["content"][:300].replace("\n", " ") + ("…" if len(r["content"]) > 300 else ""))
+
+
 def score_table(strategies: list[str], top_k: int, fp: str) -> pd.DataFrame:
     rows = []
     for name in strategies:
@@ -264,7 +292,7 @@ with tab_demo:
                         st.caption(why + " *(gold = trang undergraduate)*")
                         render_results(res, q["must_contain"], q["gold_doc"], chars=260)
                         st.markdown("**🤖 Agent:**")
-                        st.success(agent_answer(s_store, llm, q["q"], res))
+                        show_answer(agent_answer(s_store, llm, q["q"], res), res, q["must_contain"], compact=True)
                 st.info(
                     "**Điểm nhấn:** Cùng một câu hỏi, đổi `audience` là đổi câu trả lời — *3 cuốn / 2 tuần* (student) hay "
                     "*5 cuốn / 1 tháng* (faculty). Không lọc thì top-3 là chunk phạt tiền của FAQ và trang faculty: similarity đo "
@@ -279,7 +307,7 @@ with tab_demo:
                 res = s_store.search_with_filter(question, top_k=top_k, metadata_filter=flt)
                 render_results(res, chars=300)
                 st.markdown("**🤖 Agent:**")
-                st.success(agent_answer(s_store, llm, question, res))
+                show_answer(agent_answer(s_store, llm, question, res), res, "", compact=True)
                 st.info(
                     "**Điểm nhấn:** `search_with_filter` so khớp `==` trên mọi cặp key/value → lọc được theo `category` "
                     "(fees / borrowing / access / spaces / faq), `doc_id` (một file), `language`, `document_version`… "
@@ -322,7 +350,7 @@ with tab_demo:
                         st.caption(f"ứng viên: **{count_candidates(s_store, flt)}** chunk")
                         render_results(res, "6 months", ["borrowing-privilege", "library-faq"], chars=260)
                         st.markdown("**🤖 Agent:**")
-                        st.success(agent_answer(s_store, llm, qh, res))
+                        show_answer(agent_answer(s_store, llm, qh, res), res, "6 months", compact=True)
                 st.info(
                     "**Điểm nhấn:** Filter `audience=faculty` **loại luôn** hai trang `audience=all` — là nơi duy nhất ghi *6 months* — "
                     "nên agent chỉ còn *one month* của graduate. Precision đổi bằng recall. Cách sửa dữ liệu: gán `audience` ở mức "
@@ -344,7 +372,7 @@ with tab_demo:
                         st.caption(why)
                         render_results(res, q2["must_contain"], q2["gold_doc"], chars=260)
                         st.markdown("**🤖 Agent:**")
-                        st.success(agent_answer(s_store, llm, q2["q"], res))
+                        show_answer(agent_answer(s_store, llm, q2["q"], res), res, q2["must_contain"], compact=True)
                 st.info(
                     "**Điểm nhấn:** `category=fees` nghe rất đúng cho câu hỏi về tiền phạt, nhưng trang *Fines and other charges* "
                     "chỉ nói về phí hư hỏng — con số 20.000 VND/ngày lại ở FAQ. Metadata chỉ tốt khi **schema khớp với câu hỏi thật**; "
@@ -385,7 +413,7 @@ with tab_demo:
             render_results(res, q["must_contain"], q["gold_doc"])
             st.subheader("🤖 Agent answer")
             ans = agent_answer(s_store, llm, q["q"], res)
-            st.success(ans)
+            show_answer(ans, res, q["must_contain"])
             has10 = "10,000" in ans or "10.000" in ans
             has20 = "20,000" in ans or "20.000" in ans
             verdict = "agent lấy **10.000 VND** từ trang faculty (chunk có 'per business day')" if has10 and not has20 else \
@@ -503,7 +531,7 @@ with tab_query:
 
         st.subheader("🤖 Agent answer")
         ans = agent_answer(store, llm, question, filtered)
-        st.success(ans)
+        show_answer(ans, filtered, must)
         if filtered:
             with st.expander("Prompt đã gửi"):
                 st.code(KnowledgeBaseAgent(store=store, llm_fn=llm).build_prompt(question, filtered))
