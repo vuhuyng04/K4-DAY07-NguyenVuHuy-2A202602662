@@ -86,6 +86,18 @@ st.markdown(
 .sx-cite{font-size:.83rem;color:#374151;margin:.25rem 0}
 .sx-cite a{color:#1d4ed8;text-decoration:none;font-family:ui-monospace,Menlo,monospace;font-size:.78rem}
 .sx-cite .txt{color:#6b7280;font-size:.8rem;margin:.15rem 0 .5rem 1.2rem}
+.sx-docview{font-size:.86rem;line-height:1.75;color:#1f2937;border:1px solid #e5e7eb;border-radius:10px;padding:.8rem 1rem;background:#fff;max-height:600px;overflow:auto}
+.sx-docview .c0{background:#eff6ff}.sx-docview .c1{background:#ecfdf5}.sx-docview .ov{background:#fde68a}.sx-docview .gap{color:#9ca3af}
+.sx-docview mark{background:#fecaca;padding:0;border-radius:2px}
+.sx-cmark{display:inline-block;font-size:.66rem;font-weight:700;color:#fff;background:#374151;border-radius:4px;padding:0 .38rem;margin:0 .3rem 0 .1rem;line-height:1.5;vertical-align:baseline;user-select:none}
+.sx-cmark.hd{background:#2563eb}
+.sx-map{position:relative;height:32px;background:#f3f4f6;border-radius:6px;overflow:hidden}
+.sx-map .bar{position:absolute;height:12px;border-radius:2px;overflow:hidden;white-space:nowrap;font-size:9px;line-height:12px;color:#fff;padding-left:3px;box-sizing:border-box}
+.sx-map .ovl{position:absolute;top:0;height:32px;background:#f59e0b;opacity:.45}
+.sx-maprow{display:grid;grid-template-columns:230px 1fr;gap:.8rem;align-items:center;margin:.35rem 0}
+.sx-maprow .lbl{font-size:.82rem;color:#111827;line-height:1.35}
+.sx-maprow .lbl small{display:block;color:#6b7280;font-size:.75rem}
+.sx-legend span{display:inline-block;padding:0 .45rem;border-radius:4px;font-size:.78rem;margin-right:.6rem}
 div[data-testid="stMetricValue"]{font-size:1.35rem}
 </style>
 """,
@@ -747,37 +759,142 @@ with tab_query:
 
 
 # ============================================================================
-# Tab 4 — Chunk: bản đồ vị trí, overlap, heading gắn lại
+# Tab 4 — Chunk: văn bản gốc tô màu theo chunk, bản đồ 3 chiến lược, overlap, heading gắn lại
 # ============================================================================
+_WS = re.compile(r"\s+")
+
+
+def _norm_index(text: str) -> tuple[str, list[int]]:
+    """Gộp mọi khoảng trắng thành 1 dấu cách + bảng ánh xạ vị trí chuẩn hoá → vị trí gốc."""
+    out: list[str] = []
+    idx: list[int] = []
+    prev_ws = False
+    for i, ch in enumerate(text):
+        if ch.isspace():
+            if prev_ws:
+                continue
+            out.append(" ")
+            idx.append(i)
+            prev_ws = True
+        else:
+            out.append(ch)
+            idx.append(i)
+            prev_ws = False
+    return "".join(out), idx
+
+
+def _locate_all(body: str, chunks: list[str]) -> list[tuple[int, int]]:
+    """(start, end) của từng chunk trong văn bản gốc, (-1, -1) nếu không định vị được.
+
+    So khớp trên bản gộp khoảng trắng để chịu được chunker strip/join (Sentence, Heading);
+    tìm tuần tự từ vị trí chunk trước nên overlap (chunk sau bắt đầu trước khi chunk trước kết thúc) vẫn đúng.
+    """
+    nb, idx = _norm_index(body)
+    spans: list[tuple[int, int]] = []
+    cursor = 0
+    for c in chunks:
+        cands = [c]
+        if "\n" in c:
+            cands.append(c.split("\n", 1)[1])  # Heading gắn lại tiêu đề → định vị phần thân
+        found = (-1, -1)
+        for cc in cands:
+            nc = _WS.sub(" ", cc).strip()
+            if not nc:
+                continue
+            j = nb.find(nc, cursor)
+            if j < 0:
+                j = nb.find(nc)
+            if j >= 0:
+                found = (idx[j], idx[j + len(nc) - 1] + 1)
+                cursor = j
+                break
+        spans.append(found)
+    return spans
+
+
 def _overlap_len(prev: str, cur: str) -> int:
-    """Số ký tự đầu của `cur` trùng với đuôi của `prev` (overlap thật giữa 2 chunk liền kề)."""
+    """Số ký tự đầu của `cur` trùng với đuôi của `prev` (đo bằng so khớp chuỗi)."""
     m = min(len(prev), len(cur))
-    for k in range(m, 9, -1):  # bỏ qua trùng dưới 10 ký tự (khoảng trắng, dấu câu)
+    for k in range(m, 9, -1):
         if prev.endswith(cur[:k]):
             return k
     return 0
 
 
-def _locate(body: str, chunk: str) -> tuple[int, int]:
-    """Vị trí chunk trong văn bản gốc; Heading gắn lại tiêu đề nên thử phần sau dòng đầu."""
-    i = body.find(chunk)
-    if i >= 0:
-        return i, i + len(chunk)
-    if "\n" in chunk:
-        rest = chunk.split("\n", 1)[1].strip()
-        i = body.find(rest)
-        if i >= 0:
-            return i, i + len(rest)
-    return -1, -1
+def _chunk_stats(chunks: list[str], body: str) -> dict:
+    spans = _locate_all(body, chunks) if body else [(-1, -1)] * len(chunks)
+    overlaps = [0]
+    head_rep: list[str | None] = [None]
+    for i in range(1, len(chunks)):
+        prev, cur = chunks[i - 1], chunks[i]
+        overlaps.append(_overlap_len(prev, cur))
+        h_prev = prev.split("\n", 1)[0]
+        head_rep.append(h_prev if (h_prev.startswith("#") and cur.startswith(h_prev)) else None)
+    return {
+        "spans": spans, "overlaps": overlaps, "head_rep": head_rep,
+        "n": len(chunks), "avg": sum(map(len, chunks)) / max(1, len(chunks)),
+        "total_ov": sum(overlaps), "n_head": sum(1 for h in head_rep if h),
+        "located": sum(1 for a, _ in spans if a >= 0),
+    }
 
 
-def _render_chunk_html(text: str, overlap_n: int, heading_repeat: str | None, hl: str) -> str:
-    """Tô vàng phần overlap với chunk trước, xanh heading gắn lại, đỏ chuỗi tìm kiếm."""
+_BAR_COLORS = ("#3b82f6", "#10b981")
+
+
+def _map_html(spans: list[tuple[int, int]], L: int) -> str:
+    L = max(1, L)
+    parts = []
+    for i, (a, b) in enumerate(spans):
+        if a < 0:
+            continue
+        left, width = 100 * a / L, max(0.3, 100 * (b - a) / L)
+        top = 2 if i % 2 == 0 else 18
+        label = str(i) if width > 2.2 else ""
+        parts.append(
+            f'<div class="bar" title="chunk {i}: {a}–{b} ({b - a} ký tự)" '
+            f'style="left:{left:.2f}%;width:{width:.2f}%;top:{top}px;background:{_BAR_COLORS[i % 2]}">{label}</div>'
+        )
+    for i in range(1, len(spans)):
+        (a0, b0), (a1, b1) = spans[i - 1], spans[i]
+        if a0 >= 0 and a1 >= 0 and a1 < b0:
+            parts.append(f'<div class="ovl" title="overlap chunk {i-1}–{i}: {b0 - a1} ký tự" style="left:{100 * a1 / L:.2f}%;width:{max(0.3, 100 * (b0 - a1) / L):.2f}%"></div>')
+    return f'<div class="sx-map">{"".join(parts)}</div>'
+
+
+def _document_html(body: str, spans: list[tuple[int, int]], matches: list[tuple[int, int]], head_rep: list[str | None]) -> str:
+    """Văn bản gốc, mỗi ký tự tô theo chunk phủ nó: tint xen kẽ theo chunk, vàng nếu ≥2 chunk phủ, đỏ = chuỗi tìm."""
+    pts = {0, len(body)}
+    for a, b in spans:
+        if a >= 0:
+            pts.update((a, b))
+    for a, b in matches:
+        pts.update((a, b))
+    starts: dict[int, int] = {}
+    for i, (a, _) in enumerate(spans):
+        if a >= 0:
+            starts.setdefault(a, i)
+    out = []
+    pts_sorted = sorted(pts)
+    for a, b in zip(pts_sorted, pts_sorted[1:]):
+        if a in starts:
+            i = starts[a]
+            out.append(f'<span class="sx-cmark" title="chunk {i} bắt đầu">{i}</span>')
+            if head_rep[i]:
+                out.append('<span class="sx-cmark hd" title="chunk này được gắn lại tiêu đề của chunk trước">↻ heading</span>')
+        cov = [i for i, (s0, e0) in enumerate(spans) if s0 >= 0 and s0 <= a and b <= e0]
+        cls = "gap" if not cov else ("ov" if len(cov) >= 2 else ("c0" if cov[0] % 2 == 0 else "c1"))
+        txt = _html.escape(body[a:b]).replace("\n", "<br>")
+        if any(s0 <= a and b <= e0 for s0, e0 in matches):
+            txt = f"<mark>{txt}</mark>"
+        out.append(f'<span class="{cls}">{txt}</span>')
+    return f'<div class="sx-docview">{"".join(out)}</div>'
+
+
+def _chunk_html(text: str, overlap_n: int, heading_repeat: str | None, hl: str) -> str:
     def e(t: str) -> str:
         return _html.escape(t).replace("\n", "<br>")
 
-    parts = []
-    pos = 0
+    parts, pos = [], 0
     if heading_repeat and text.startswith(heading_repeat):
         parts.append(f'<span style="background:#dbeafe;border-radius:3px">{e(heading_repeat)}</span>')
         pos = len(heading_repeat)
@@ -792,63 +909,68 @@ def _render_chunk_html(text: str, overlap_n: int, heading_repeat: str | None, hl
 
 
 with tab_chunks:
-    c1, c2 = st.columns([2, 3])
+    c1, c2, c3 = st.columns([2, 2, 3])
     doc_pick = c1.selectbox("Tài liệu", sorted(per_doc))
-    hl = c2.text_input("Tô đỏ chuỗi", value="", placeholder="ví dụ: 2 giờ mỗi buổi / 2 hours per session")
-    chunks = [r for r in store._store if r["metadata"]["doc_id"] == doc_pick]
+    view_strat = c2.selectbox("Chiến lược", list(STRATEGIES), index=list(STRATEGIES).index(strategy), key="chunk_strat")
+    hl = c3.text_input("Tô đỏ chuỗi", value="", placeholder="ví dụ: 2 giờ mỗi buổi / 2 hours per session")
+
     body_path = bench.CORPUS_DIR / f"{doc_pick}.md"
     _, body = bench.parse_front_matter(body_path.read_text(encoding="utf-8")) if body_path.exists() else ({}, "")
-    n = len(chunks)
-    avg = sum(len(c["content"]) for c in chunks) / max(1, n)
-
-    overlaps = [0]
-    head_rep: list[str | None] = [None]
-    for i in range(1, n):
-        prev, cur = chunks[i - 1]["content"], chunks[i]["content"]
-        overlaps.append(_overlap_len(prev, cur))
-        h_prev = prev.split("\n", 1)[0]
-        head_rep.append(h_prev if (h_prev.startswith("#") and cur.startswith(h_prev)) else None)
-    total_ov = sum(overlaps)
-    n_head = sum(1 for h in head_rep if h)
+    v_store, _, _ = build_store(view_strat, fp)
+    chunks = [r["content"] for r in v_store._store if r["metadata"]["doc_id"] == doc_pick]
+    stt = _chunk_stats(chunks, body)
+    matches = [(m.start(), m.end()) for m in re.finditer(re.escape(hl), body, re.IGNORECASE)] if (hl and body) else []
+    n_hit = sum(1 for c in chunks if hl and hl.lower() in c.lower())
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Số chunk", n)
-    m2.metric("Độ dài trung bình", f"{avg:.0f}")
-    m3.metric("Ký tự overlap", total_ov, help="Phần đầu chunk i trùng với phần đuôi chunk i−1, đo bằng so khớp chuỗi")
-    m4.metric("Heading gắn lại", n_head, help="Chunk bắt đầu bằng đúng tiêu đề của chunk trước (HeadingChunker)")
-    st.caption(f"{strategy} · văn bản gốc {len(body)} ký tự · tổng ký tự trong chunk {sum(len(c['content']) for c in chunks)} (= gốc + overlap + heading lặp)")
+    m1.metric("Số chunk", stt["n"])
+    m2.metric("Độ dài trung bình", f"{stt['avg']:.0f} ký tự")
+    m3.metric("Ký tự overlap", stt["total_ov"], help="Phần đầu chunk i trùng với phần đuôi chunk i−1, đo bằng so khớp chuỗi")
+    m4.metric("Heading gắn lại", stt["n_head"], help="Chunk bắt đầu bằng đúng tiêu đề của chunk trước (HeadingChunker)")
+    note = f"{view_strat} · văn bản gốc {len(body)} ký tự · tổng ký tự trong chunk {sum(map(len, chunks))} (= gốc + overlap + heading lặp)"
+    if hl:
+        note += f" · chuỗi tìm xuất hiện {len(matches)} lần trong văn bản, nằm trong {n_hit}/{stt['n']} chunk"
+    if body and stt["located"] < stt["n"]:
+        note += f" · định vị được {stt['located']}/{stt['n']} chunk trên văn bản gốc"
+    st.caption(note)
 
     if body:
-        L = max(1, len(body))
-        bars = []
-        colors = ["#3b82f6", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#14b8a6"]
-        for i, r in enumerate(chunks):
-            a, b = _locate(body, r["content"])
-            if a < 0:
-                continue
-            left, width = 100 * a / L, max(0.3, 100 * (b - a) / L)
-            top = 0 if i % 2 == 0 else 14
-            bars.append(
-                f'<div title="chunk {i}: {a}–{b} ({b-a} ký tự)" style="position:absolute;left:{left:.2f}%;width:{width:.2f}%;top:{top}px;height:12px;'
-                f'background:{colors[i % len(colors)]};opacity:.7;border-radius:2px"></div>'
+        st.markdown("**Bản đồ vị trí — ba chiến lược trên cùng tài liệu**")
+        st.caption("Mỗi thanh là một chunk (xếp so le, số là chỉ số chunk); dải vàng phủ hai hàng là vùng hai chunk chồng nhau.")
+        rows = []
+        for name in MAIN3:
+            s_store, _, _ = build_store(name, fp)
+            cs = [r["content"] for r in s_store._store if r["metadata"]["doc_id"] == doc_pick]
+            st_ = _chunk_stats(cs, body)
+            rows.append(
+                f'<div class="sx-maprow"><div class="lbl">{esc(name)}<small>{st_["n"]} chunk · TB {st_["avg"]:.0f} ký tự · overlap {st_["total_ov"]} · heading lặp {st_["n_head"]}</small></div>'
+                f'{_map_html(st_["spans"], len(body))}</div>'
             )
-        html('<div class="sx-note">Bản đồ vị trí chunk trên văn bản gốc — mỗi thanh một chunk, xếp so le; chỗ hai thanh chồng mép là overlap.</div>'
-             f'<div style="position:relative;height:30px;background:#f3f4f6;border-radius:6px;margin:2px 0 12px 0">{"".join(bars)}</div>')
+        html("".join(rows))
 
-    html('<div class="sx-legend"><span style="background:#fde68a">overlap với chunk trước</span>'
-         '<span style="background:#dbeafe">heading gắn lại</span><span style="background:#fecaca">chuỗi tìm</span></div>')
-    for i, r in enumerate(chunks):
-        found = bool(hl) and hl.lower() in r["content"].lower()
-        bits = [f"chunk {r['metadata']['chunk_index']}", f"{len(r['content'])} ký tự"]
-        if overlaps[i]:
-            bits.append(f"overlap {overlaps[i]}")
-        if head_rep[i]:
+        st.markdown(f"**Văn bản gốc tô màu theo chunk — {esc(view_strat)}**")
+        html('<div class="sx-legend"><span style="background:#eff6ff">chunk chẵn</span><span style="background:#ecfdf5">chunk lẻ</span>'
+             '<span style="background:#fde68a">hai chunk chồng nhau (overlap)</span><span style="background:#fecaca">chuỗi tìm</span>'
+             '<span class="sx-cmark" style="margin:0 .6rem 0 0">n</span>bắt đầu chunk n'
+             '<span class="sx-cmark hd" style="margin:0 .6rem 0 .6rem">↻ heading</span>chunk được gắn lại tiêu đề</div>')
+        html(_document_html(body, stt["spans"], matches, stt["head_rep"]))
+    else:
+        st.info("Không tìm thấy file nguồn của tài liệu này — chỉ hiển thị danh sách chunk.")
+
+    st.markdown("**Danh sách chunk**")
+    for i, c in enumerate(chunks):
+        found = bool(hl) and hl.lower() in c.lower()
+        bits = [f"Chunk {i}", f"{len(c)} ký tự"]
+        if stt["overlaps"][i]:
+            bits.append(f"overlap {stt['overlaps'][i]}")
+        if stt["head_rep"][i]:
             bits.append("heading lặp")
         if found:
-            bits.append("✓ chứa chuỗi")
-        preview = r["content"][:60].replace("\n", " ")
-        with st.expander(" · ".join(bits) + f" — {preview}…", expanded=found):
-            html(_render_chunk_html(r["content"], overlaps[i], head_rep[i], hl))
+            bits.append("chứa chuỗi tìm")
+        a, b = stt["spans"][i]
+        bits.append(f"vị trí {a}–{b}" if a >= 0 else "không định vị được")
+        with st.expander(" · ".join(bits), expanded=found):
+            html(_chunk_html(c, stt["overlaps"][i], stt["head_rep"][i], hl))
 
 
 # ============================================================================
