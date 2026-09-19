@@ -279,14 +279,25 @@ def agent_answer(store: EmbeddingStore, llm, question: str, results: list[dict])
 _CITE = re.compile(r"\[(\d+)\]")
 
 
+_GENERAL_RE = re.compile(r"^\s*\[\s*general\s*\]\s*:?\s*", re.IGNORECASE)
+
+
+def split_general(answer: str) -> tuple[bool, str]:
+    """Tách nhãn [GENERAL] mà prompt yêu cầu LLM gắn vào câu trả lời không dựa trên tài liệu."""
+    m = _GENERAL_RE.match(answer)
+    return (True, answer[m.end():].strip()) if m else (False, answer)
+
+
 def show_answer(answer: str, results: list[dict], must_contain="", compact: bool = False) -> None:
     """Câu trả lời + panel 'Nguồn trích dẫn' nối [n] → chunk → doc_id → source_url."""
-    html(f'<div class="sx-answer"><div class="lbl">Trả lời</div>{esc(answer).replace(chr(10), "<br>")}</div>')
-    cited = sorted({int(n) for n in _CITE.findall(answer) if 1 <= int(n) <= len(results)})
-    if not results:
+    is_general, text = split_general(answer)
+    lbl = "Trả lời " + pill("chung · không dựa trên tài liệu", "neutral") if is_general else "Trả lời"
+    html(f'<div class="sx-answer"><div class="lbl">{lbl}</div>{esc(text).replace(chr(10), "<br>")}</div>')
+    if is_general or not results:
         return
+    cited = sorted({int(n) for n in _CITE.findall(text) if 1 <= int(n) <= len(results)})
     if not cited:
-        if "không tìm thấy" not in answer.lower():
+        if "không tìm thấy" not in text.lower():
             st.warning("Agent không trích dẫn [n] — không truy vết được câu trả lời lấy từ đâu.")
         return
     with st.expander("Nguồn trích dẫn " + ", ".join(f"[{n}]" for n in cited), expanded=not compact):
@@ -1071,8 +1082,9 @@ cao nhất trong 5 cặp thử. Embedding thấy *chủ đề*, không thấy *�
 `search_with_filter(metadata_filter={{"audience": "student"}})` = **lọc trước** (chỉ giữ chunk `audience == student`) rồi mới search.
 Lọc *sau* top-k thì 3 slot có thể đã bị chunk sai chiếm hết → 0 kết quả dù store còn tài liệu hợp lệ.
 
-**Agent (RAG).** top-3 chunk → prompt: quy tắc (*chỉ dùng ngữ cảnh, không bịa, trích dẫn số hiệu*) + chunk đánh số `[1][2][3]` kèm `doc_id`
-+ câu hỏi → `{llm.name}`. Số `[3]` trong câu trả lời trỏ về chunk 3 → **truy vết được** câu trả lời lấy từ file nào.
+**Agent (RAG).** top-3 chunk → prompt hai chế độ: câu về tài liệu → *chỉ dùng ngữ cảnh, không bịa, trích dẫn số hiệu* `[1][2][3]` kèm `doc_id`;
+câu chào hỏi / câu chung → trả lời ngắn bằng hiểu biết chung, gắn nhãn `[GENERAL]`, không trích dẫn (demo hiển thị thành nhãn *chung · không dựa trên tài liệu*).
+→ `{llm.name}`. Số `[3]` trong câu trả lời trỏ về chunk 3 → **truy vết được** câu trả lời lấy từ file nào.
 
 **Chấm điểm — hai mức.** Mỗi query khai báo `gold_doc` (file chứa đáp án) và `must_contain` (chuỗi đặc trưng, vd `"2 hours per session"`).
 

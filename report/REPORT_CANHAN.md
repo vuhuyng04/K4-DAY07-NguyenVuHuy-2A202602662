@@ -62,7 +62,7 @@
 ### Tác tử KnowledgeBaseAgent
 
 **`answer`** — hướng tiếp cận:
-> Ba bước: `store.search(question, top_k)` → `build_prompt` → `llm_fn(prompt)`. Nếu không retrieve được gì (store rỗng) thì trả thẳng câu "không tìm thấy" mà không gọi LLM. Prompt gồm: quy tắc (chỉ dùng ngữ cảnh, không bịa, nói rõ khi không có thông tin), khối NGỮ CẢNH với từng chunk **đánh số `[1] [2] [3]` kèm `doc_id`** để câu trả lời trích dẫn được và truy vết về đúng file, rồi CÂU HỎI. Tách `build_prompt` thành method riêng để dễ in ra kiểm tra và tái dùng khi benchmark.
+> Ba bước: `store.search(question, top_k)` → `build_prompt` → `llm_fn(prompt)`. Nếu không retrieve được gì (store rỗng) thì trả thẳng câu "không tìm thấy" mà không gọi LLM. Prompt có **hai chế độ**: câu hỏi về nội dung tài liệu → chỉ dùng ngữ cảnh, không bịa, trích dẫn số hiệu đoạn, nói rõ khi không có thông tin; câu chào hỏi/câu chung không liên quan tài liệu → trả lời ngắn bằng hiểu biết chung, gắn nhãn `[GENERAL]` và không trích dẫn (để giao diện phân biệt được câu trả lời có căn cứ với câu trả lời chung mà không phải đoán qua văn xuôi). Khối NGỮ CẢNH đưa từng chunk **đánh số `[1] [2] [3]` kèm `doc_id`** để câu trả lời truy vết về đúng file, rồi CÂU HỎI. Tách `build_prompt` thành method riêng để dễ in ra kiểm tra và tái dùng khi benchmark.
 
 ---
 

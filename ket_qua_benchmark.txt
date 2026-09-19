@@ -34,7 +34,7 @@ Q2: Mức phạt trả sách muộn là bao nhiêu tiền một ngày?
     2. score=0.572  doc_id=library-faq-vi                 aud=all      | Lưu ý: Không nộp phạt đúng hạn không miễn cho bạn đọc trách nhiệm trả hoặc gia hạn tài liệu. Bạn đọc phải nộp ...
     3. score=0.570  doc_id=library-faq-vi                 aud=all      | | Nhóm người dùng | Số tài liệu | Thời hạn mượn | Gia hạn | |---|---|---|---| | Sinh viên đại học; Giảng viên ...
   → Điểm: 2/2  (chunk chứa đáp án ở top-1)
-  Agent: Mức phạt trả sách muộn là 20.000 VND/ngày quá hạn/tài liệu đối với tài liệu thông thường, và 20.000 VND/giờ quá hạn/tài liệu đối với tài liệu chuyên ngành theo môn học và thiết bị [1].
+  Agent: Mức phạt trả sách muộn là 20.000 VND/ngày quá hạn/tài liệu đối với tài liệu thông thường, 20.000 VND/giờ quá hạn/tài liệu đối với tài liệu chuyên ngành theo môn học, và 20.000 VND/giờ quá hạn/thiết bị [1].
 
 ------------------------------------------------------------------------------
 Q3: Thiết bị mượn quá hạn bao nhiêu ngày thì bị coi là mất?
@@ -54,7 +54,7 @@ Q4: Một nhóm được đặt phòng học nhóm tối đa bao nhiêu giờ m�
     2. score=0.695  doc_id=borrowing-undergraduate-staff-vi aud=student  | - Phòng chỉ dùng để học nhóm. Phải có ít nhất 2 người trong suốt buổi. Nếu chỉ còn một người trong phòng quá 1...
     3. score=0.628  doc_id=borrowing-graduate-faculty-vi  aud=faculty  | - Phòng chỉ dành cho nhóm gồm sinh viên, giảng viên và nhân viên VinUniversity. - Đặt phòng theo nguyên tắc ai...
   → Điểm: 1/2  (chunk chứa đáp án ở hạng 3)
-  Agent: Một nhóm được đặt phòng học nhóm tối đa 2 giờ mỗi buổi và 4 buổi mỗi tuần [3].
+  Agent: Một nhóm được đặt phòng học nhóm tối đa 2 giờ mỗi buổi và 4 buổi mỗi tuần, tính chung tất cả các phòng [3].
 
 ------------------------------------------------------------------------------
 Q5: Giờ mở cửa thư viện từ tháng 9 là khi nào?
