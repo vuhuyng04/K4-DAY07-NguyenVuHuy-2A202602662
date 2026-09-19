@@ -247,7 +247,7 @@ with st.sidebar.expander("Chunk theo tài liệu"):
     for k, v in sorted(per_doc.items()):
         st.write(f"`{k}`: {v}")
 
-tab_demo, tab_query, tab_chunks, tab_notes = st.tabs(["🎬 Kịch bản demo", "🔍 Truy vấn tự do", "🧩 Xem chunk", "📖 Ghi chú kỹ thuật"])
+tab_demo, tab_chat, tab_query, tab_chunks, tab_notes = st.tabs(["🎬 Kịch bản demo", "💬 Chatbot", "🔍 Truy vấn tự do", "🧩 Xem chunk", "📖 Ghi chú kỹ thuật"])
 
 
 # ============================================================================
@@ -604,6 +604,82 @@ with tab_chunks:
         mark = " ✅" if hl and hl.lower() in r["content"].lower() else ""
         with st.expander(f"chunk {r['metadata']['chunk_index']} · {len(r['content'])} ký tự · {r['content'][:60].replace(chr(10), ' ')}…{mark}"):
             st.text(r["content"])
+
+
+# ============================================================================
+# Tab — Chatbot: hỏi đáp tự do trên corpus, mỗi lượt = 1 vòng RAG đầy đủ
+# ============================================================================
+SUGGESTED = [
+    "Sinh viên được mượn bao nhiêu sách và trong bao lâu?",
+    "Giảng viên mượn giáo trình được tối đa bao lâu?",
+    "Trả sách muộn bị phạt bao nhiêu?",
+    "Thư viện mở cửa mấy giờ vào cuối tuần?",
+    "Mượn laptop của thư viện được bao lâu?",
+    "Đặt phòng học nhóm bằng cách nào?",
+    "Làm mất sách thì phải làm gì?",
+    "Có được mang tài liệu tham khảo về nhà không?",
+]
+
+
+def _pick_filter_from_question(question: str) -> dict | None:
+    """Gợi ý filter đơn giản từ từ khoá trong câu hỏi (chỉ để demo, người dùng có thể tắt)."""
+    q = question.lower()
+    if any(w in q for w in ["giảng viên", "faculty", "cao học", "sau đại học", "graduate"]):
+        return {"audience": "faculty"}
+    if any(w in q for w in ["sinh viên", "student", "undergraduate"]):
+        return {"audience": "student"}
+    return None
+
+
+with tab_chat:
+    st.markdown(
+        "Hỏi bất kỳ điều gì về thư viện VinUni. Mỗi lượt là một vòng **RAG đầy đủ**: embed câu hỏi → lọc metadata (nếu có) → "
+        "top-k chunk → prompt có trích dẫn → LLM. Mở *Nguồn trích dẫn* dưới mỗi câu trả lời để truy vết."
+    )
+    cc1, cc2, cc3 = st.columns([2, 2, 1])
+    auto_filter = cc1.toggle("Tự gợi ý filter `audience` từ câu hỏi (bật để thấy filter làm mất recall)", value=False, key="chat_auto")
+    chat_filter = None
+    with cc2:
+        manual = st.checkbox("Đặt filter thủ công", value=False, key="chat_manual")
+    if cc3.button("🗑️ Xoá hội thoại", key="chat_clear"):
+        st.session_state["chat_history"] = []
+        st.rerun()
+    if manual:
+        chat_filter = filter_builder(store, key="chat")
+
+    with st.expander("💡 Câu hỏi gợi ý"):
+        cols = st.columns(2)
+        for i, sq in enumerate(SUGGESTED):
+            if cols[i % 2].button(sq, key=f"sug_{i}", width="stretch"):
+                st.session_state["chat_pending"] = sq
+
+    history: list[dict] = st.session_state.setdefault("chat_history", [])
+    for turn in history:
+        with st.chat_message("user"):
+            st.write(turn["q"])
+        with st.chat_message("assistant"):
+            st.caption(f"chiến lược `{turn['strategy']}` · filter `{turn['filter']}` · {turn['n_cand']} ứng viên · top-{turn['top_k']}")
+            show_answer(turn["answer"], turn["results"], "", compact=True)
+
+    pending = st.session_state.pop("chat_pending", None)
+    typed = st.chat_input("Nhập câu hỏi…", key="chat_input")
+    question = typed or pending
+    if question:
+        flt = chat_filter if manual else (_pick_filter_from_question(question) if auto_filter else None)
+        with st.chat_message("user"):
+            st.write(question)
+        with st.chat_message("assistant"):
+            with st.spinner("Đang truy xuất + hỏi LLM…"):
+                results = store.search_with_filter(question, top_k=top_k, metadata_filter=flt)
+                answer = agent_answer(store, llm, question, results)
+            st.caption(f"chiến lược `{strategy}` · filter `{flt}` · {count_candidates(store, flt)} ứng viên · top-{top_k}")
+            show_answer(answer, results, "", compact=True)
+            with st.expander(f"🔎 Top-{top_k} chunk đã dùng"):
+                render_results(results, "", None, chars=300)
+        history.append({
+            "q": question, "answer": answer, "results": results, "filter": flt,
+            "strategy": strategy, "top_k": top_k, "n_cand": count_candidates(store, flt),
+        })
 
 
 # ============================================================================
