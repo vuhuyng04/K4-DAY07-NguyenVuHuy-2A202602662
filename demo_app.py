@@ -173,7 +173,7 @@ with st.sidebar.expander("Chunk theo tài liệu"):
     for k, v in sorted(per_doc.items()):
         st.write(f"`{k}`: {v}")
 
-tab_demo, tab_query, tab_chunks = st.tabs(["🎬 Kịch bản demo", "🔍 Truy vấn tự do", "🧩 Xem chunk"])
+tab_demo, tab_query, tab_chunks, tab_notes = st.tabs(["🎬 Kịch bản demo", "🔍 Truy vấn tự do", "🧩 Xem chunk", "📖 Ghi chú kỹ thuật"])
 
 
 # ============================================================================
@@ -392,3 +392,118 @@ with tab_chunks:
         mark = " ✅" if hl and hl.lower() in r["content"].lower() else ""
         with st.expander(f"chunk {r['metadata']['chunk_index']} · {len(r['content'])} ký tự · {r['content'][:60].replace(chr(10), ' ')}…{mark}"):
             st.text(r["content"])
+
+
+# ============================================================================
+# Tab 4 — Ghi chú: data, pipeline, chunking, chấm điểm
+# ============================================================================
+with tab_notes:
+    st.markdown("## Đường đi của một câu hỏi")
+    st.code(
+        "File .md ──► Chunker.chunk() ──► Document(id='file#i', content, metadata)\n"
+        "                                        │  (metadata của file sao vào MỌI chunk)\n"
+        "                                        ▼\n"
+        "                    EmbeddingStore.add_documents()  → embed từng chunk (1536 chiều)\n"
+        "                                        │\n"
+        "Câu hỏi ──► embed ──► search_with_filter(metadata_filter) → lọc TRƯỚC → dot product → top-k\n"
+        "                                        │\n"
+        "                    KnowledgeBaseAgent.build_prompt() → [1][2][3] + doc_id → gpt-4o-mini\n",
+        language="text",
+    )
+
+    n1, n2, n3 = st.tabs(["📁 Data", "🔪 Chunking", "🎯 Embedding · Search · Chấm"])
+
+    with n1:
+        st.markdown(
+            f"""
+**Corpus:** `{bench.CORPUS_DIR.name}` — {len(per_doc)} trang công khai của `library.vinuni.edu.vn`, crawl 2026-09-19 bằng
+`scripts/fetch_public_pages.py` (kiểm `robots.txt`, chờ ≥1 s/request), sau đó **làm sạch tay**: bỏ menu/footer (~70 % output thô),
+chuyển bảng HTML → Markdown, giữ nguyên điều khoản + con số + mốc thời gian.
+
+**Vì sao chọn thư viện:** (1) robots.txt cho phép, (2) nhiều số liệu kiểm chứng được, (3) có **2 trang cùng câu chữ, khác đối tượng,
+khác đáp án** — `borrowing-undergraduate-staff` (3 items / 2 weeks) và `borrowing-graduate-faculty` (5 items / 1 month).
+Đây là bẫy cố ý để chứng minh khi nào *bắt buộc* phải có metadata filter.
+"""
+        )
+        rows = []
+        for path in sorted(bench.CORPUS_DIR.glob("*.md")):
+            meta, body = bench.parse_front_matter(path.read_text(encoding="utf-8"))
+            rows.append({
+                "doc_id": meta.get("doc_id"), "audience": meta.get("audience"), "category": meta.get("category"),
+                "ký tự": len(body), f"chunks ({strategy.split(' — ')[0]})": per_doc.get(path.stem, 0),
+                "document_version": meta.get("document_version"), "source_url": meta.get("source_url"),
+            })
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+        st.markdown(
+            """
+**Front matter** (đầu mỗi file) = metadata, được `parse_front_matter()` tách ra và **sao vào mọi chunk** của file đó:
+```yaml
+---
+doc_id: borrowing-undergraduate-staff   # trỏ chunk về file gốc; delete_document + chấm điểm dựa vào nó
+audience: student                       # student | faculty | staff | all  ← trường lọc chính
+category: borrowing                     # borrowing | fees | access | spaces | faq
+source_url: https://library.vinuni.edu.vn/...   # truy vết
+retrieved_at: 2026-09-19
+document_version: not-stated            # không bịa số hiệu khi trang không nêu
+---
+```
+Đã loại 2 trang sau khi crawl: `how-to-borrow-return-renew` (chỉ tiêu đề video) và `borrowing-vingroup-community` (không số liệu, trùng nội dung).
+Corpus tiếng Anh (trang gốc chỉ có tiếng Anh); query tiếng Việt → kiểm cross-lingual retrieval.
+"""
+        )
+
+    with n2:
+        st.markdown(
+            """
+Embedding không hiểu cả file 8 KB → phải cắt thành mẩu 300–800 ký tự. **Cắt ở đâu** quyết định retrieval.
+Mỗi thành viên một chiến lược, chỉ đổi **một dòng** `CHUNKER = ...` trong `bench.py`:
+
+| Chiến lược | Cách cắt | Điểm mạnh | Điểm yếu |
+|---|---|---|---|
+| **FixedSize(500, overlap=50)** — Thiên | Đếm 500 ký tự thì cắt, bất kể giữa câu; chunk sau lấy lại 50 ký tự cuối chunk trước | Overlap = mỗi ranh giới xuất hiện 2 lần → thông tin sát ranh giới vẫn có chunk chứa trọn | Cắt mù giữa câu / giữa hàng bảng; chunk khó đọc |
+| **Recursive(500)** — Huy | Thử `\\n\\n` → `\\n` → `. ` → ` ` → cắt cứng; mảnh nhỏ liền kề gom lại đến sát 500. **Không overlap** | Giữ trọn từng mục FAQ, từng đoạn | Bullet list bị tách từng dòng; ranh giới gom có thể rơi giữa 2 bullet → mỗi thông tin chỉ có 1 cơ hội |
+| **Heading(800)** — Phong | Cắt tại mỗi dòng `#`/`##`; section > 800 thì hạ xuống Recursive nhưng **gắn lại heading** lên đầu mỗi mảnh | Section = đơn vị ngữ nghĩa do người soạn chia sẵn; chunk tự mô tả "đây là mục gì" | Chỉ tốt với văn bản có cấu trúc mục; FAQ 22 mục / bảng 25 phòng vẫn phải cắt tiếp |
+| Sentence(3 câu) | Regex `(?<=[.!?])\\s+`, gom 3 câu | Chunk ngắn, sạch | Bảng/bullet không có dấu chấm → 1 chunk 2 472 ký tự |
+
+**Ví dụ Q4** — đáp án *"2 hours per session, 2 sessions per day, 4 sessions per week"* nằm trong danh sách bullet của `room-booking`:
+"""
+        )
+        st.code(
+            "Recursive:  [chunk 5: ...Reservation... - Each group can book up to 2 hours per session...]  ← có đáp án, KHÔNG lọt top-3\n"
+            "            [chunk 6: - Study rooms are for group study only. At least 2 people...]          ← lọt top-1, không có đáp án\n"
+            "FixedSize:  [chunk 3: ...2 hours per session, 2 sessions per day...Reserv]\n"
+            "            [chunk 4: ...Reservations may be made... At least 2 people...]                  ← overlap kéo bullet sang\n"
+            "Heading:    [chunk: ## Book a library Study Room ... 2 hours per session ... At least 2 people ...]  ← trọn khối",
+            language="text",
+        )
+        st.markdown("→ Mở tab **🧩 Xem chunk**, chọn `room-booking`, gõ `2 hours` vào ô tô sáng để thấy trực tiếp với chiến lược đang chọn.")
+
+    with n3:
+        st.markdown(
+            f"""
+**Embedding.** Mỗi chunk và mỗi câu hỏi → OpenAI `text-embedding-3-small` → vector 1536 chiều, đã chuẩn hoá (‖v‖ = 1) nên
+**cosine = dot product**. Cùng nghĩa → cùng hướng → score gần 1. Cache `.embed_cache.json` theo SHA-256 nội dung → chạy lại 0 API call.
+
+Điều embedding **làm được**: "mượn tối đa bao nhiêu cuốn" (VI) ≈ "may borrow up to 3 items" (EN).
+Điều embedding **không làm được**: phân biệt *"Sinh viên được mượn 5 cuốn"* với *"Giảng viên được mượn 20 cuốn"* — similarity **0.863**,
+cao nhất trong 5 cặp thử. Embedding thấy *chủ đề*, không thấy *đối tượng / số liệu* → cần metadata.
+
+**Search.** `search()` = embed câu hỏi → dot product với mọi chunk → sort → top-k.
+`search_with_filter(metadata_filter={{"audience": "student"}})` = **lọc trước** (chỉ giữ chunk `audience == student`) rồi mới search.
+Lọc *sau* top-k thì 3 slot có thể đã bị chunk sai chiếm hết → 0 kết quả dù store còn tài liệu hợp lệ.
+
+**Agent (RAG).** top-3 chunk → prompt: quy tắc (*chỉ dùng ngữ cảnh, không bịa, trích dẫn số hiệu*) + chunk đánh số `[1][2][3]` kèm `doc_id`
++ câu hỏi → `{llm.name}`. Số `[3]` trong câu trả lời trỏ về chunk 3 → **truy vết được** câu trả lời lấy từ file nào.
+
+**Chấm điểm — hai mức.** Mỗi query khai báo `gold_doc` (file chứa đáp án) và `must_contain` (chuỗi đặc trưng, vd `"2 hours per session"`).
+
+| Cách chấm | Điều kiện 2đ | Recursive (Huy) |
+|---|---|---|
+| Theo `doc_id` (ngây thơ) | gold_doc ở top-1 | **8/10** |
+| Theo chunk (thật, dùng trong bench) | chunk vừa đúng file *vừa chứa* `must_contain` ở top-1; hạng 2–3 = 1đ | **4/10** |
+
+Chênh 4 điểm = những lần lấy **đúng file nhưng sai mẩu**. `docs/SCORING.md` yêu cầu *top-3 có chunk liên quan **và** agent trả lời đúng* → phải chấm ở mức nội dung.
+
+**Ba con số cần nhớ:** `4 / 7 / 7` (Recursive / Fixed / Heading) · `0 → 2` (Q1 không / có filter) · `8 → 4` (chấm doc vs chấm chunk).
+"""
+        )
