@@ -1,14 +1,14 @@
 """
-demo_app.py — giao diện demo trực quan cho Lab 07 (Streamlit).
+demo_app.py — giao diện demo cho Lab 07 (Streamlit).
 
     pip install -r requirements-demo.txt
     streamlit run demo_app.py
 
-- Nhập OpenAI API key ngay trên sidebar (hoặc để trống → dùng .env; không có gì → mock).
-- Tab "Kịch bản demo": chọn sẵn tình huống (metadata filter, so sánh chunking,
-  nguồn mâu thuẫn, failure case, chấm hai mức, bảng tổng hợp) — bấm 1 nút là chạy.
-- Tái dùng bench.py (corpus, cache embedding, cách chấm) nên demo không tốn API
-  cho những gì đã chạy.
+- API key nhập trên sidebar (để trống → dùng .env; không có gì → mock embedder).
+- Tab "Kịch bản": 7 tình huống chọn sẵn (metadata filter, chunking, nguồn mâu thuẫn,
+  cross-lingual, chấm hai mức, tổng hợp, ngôn ngữ) — chọn rồi bấm Chạy.
+- Tab "Chatbot": hỏi đáp tự do, mỗi lượt là một vòng RAG đầy đủ có trích dẫn.
+- Tái dùng bench.py (corpus, cache embedding, cách chấm) nên số trên demo = số trong báo cáo.
 """
 
 from __future__ import annotations
@@ -41,10 +41,102 @@ STRATEGIES = {
     "Sentence(3 câu)": lambda: SentenceChunker(max_sentences_per_chunk=3),
 }
 MAIN3 = list(STRATEGIES)[:3]
-AUDIENCES = {"(không lọc)": None, "student": {"audience": "student"}, "faculty": {"audience": "faculty"}, "all": {"audience": "all"}}
 Q = {f"Q{i}": q for i, q in enumerate(bench.QUERIES, 1)}
 
-st.set_page_config(page_title="Lab 07 — Softmax RAG demo", page_icon="📚", layout="wide")
+st.set_page_config(page_title="Softmax · Lab 07 — RAG demo", page_icon="📚", layout="wide")
+
+# ============================================================================
+# Kiểu trình bày dùng chung
+# ============================================================================
+st.markdown(
+    """
+<style>
+.block-container{padding-top:1.4rem;padding-bottom:2rem;max-width:1320px}
+.sx-title{font-size:1.5rem;font-weight:700;letter-spacing:-.01em;margin:0}
+.sx-sub{color:#6b7280;margin:.15rem 0 .7rem 0;font-size:.95rem}
+.sx-chips{display:flex;flex-wrap:wrap;gap:.4rem;margin:.1rem 0 .9rem 0}
+.sx-chip{display:inline-flex;align-items:center;gap:.4rem;padding:.18rem .65rem;border:1px solid #e5e7eb;border-radius:999px;font-size:.78rem;color:#374151;background:#fff}
+.sx-chip b{font-weight:600;color:#111827}
+.sx-dot{width:.5rem;height:.5rem;border-radius:50%;display:inline-block}
+.sx-card{border:1px solid #e5e7eb;border-radius:10px;padding:.6rem .85rem;margin:.45rem 0;background:#fff}
+.sx-card.hit{border-left:3px solid #16a34a}
+.sx-head{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;font-size:.8rem;color:#374151;margin-bottom:.3rem}
+.sx-rank{font-weight:700;color:#111827}
+.sx-doc{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.76rem;background:#f3f4f6;padding:.05rem .4rem;border-radius:4px;color:#111827}
+.sx-meta{color:#6b7280}
+.sx-pill{display:inline-block;padding:.05rem .55rem;border-radius:999px;font-size:.73rem;font-weight:600;line-height:1.5;white-space:nowrap}
+.sx-pill.ok{background:#dcfce7;color:#166534}
+.sx-pill.mid{background:#fef3c7;color:#92400e}
+.sx-pill.bad{background:#fee2e2;color:#991b1b}
+.sx-pill.neutral{background:#eef2ff;color:#3730a3}
+.sx-pill.score{background:#f3f4f6;color:#111827;margin-left:auto;font-variant-numeric:tabular-nums}
+.sx-bar{height:4px;background:#f3f4f6;border-radius:2px;margin:.3rem 0 .45rem 0;overflow:hidden}
+.sx-bar>div{height:100%;background:#93c5fd}
+.sx-body{font-size:.86rem;line-height:1.5;color:#1f2937;white-space:pre-wrap}
+.sx-score{display:flex;align-items:center;gap:.6rem;margin:.25rem 0 .5rem 0;font-size:.86rem;color:#374151}
+.sx-score .big{font-size:1rem;font-weight:700;padding:.12rem .65rem;border-radius:8px}
+.sx-answer{border:1px solid #bbf7d0;background:#f0fdf4;border-radius:10px;padding:.7rem .95rem;margin:.4rem 0;font-size:.92rem;line-height:1.55;color:#14532d}
+.sx-answer .lbl{font-size:.7rem;letter-spacing:.07em;text-transform:uppercase;color:#047857;font-weight:700;margin-bottom:.25rem}
+.sx-q{border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;padding:.55rem .85rem;margin:.2rem 0 .7rem 0;font-size:.9rem;line-height:1.5}
+.sx-q .lbl{font-size:.7rem;color:#64748b;text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin-right:.4rem}
+.sx-q .row{margin:.1rem 0}
+.sx-colh{font-weight:700;font-size:.95rem;margin:.15rem 0 .05rem 0;color:#111827}
+.sx-note{font-size:.8rem;color:#6b7280;margin:.1rem 0 .4rem 0}
+.sx-legend span{display:inline-block;padding:0 .45rem;border-radius:4px;font-size:.78rem;margin-right:.6rem}
+.sx-cite{font-size:.83rem;color:#374151;margin:.25rem 0}
+.sx-cite a{color:#1d4ed8;text-decoration:none;font-family:ui-monospace,Menlo,monospace;font-size:.78rem}
+.sx-cite .txt{color:#6b7280;font-size:.8rem;margin:.15rem 0 .5rem 1.2rem}
+div[data-testid="stMetricValue"]{font-size:1.35rem}
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+
+def html(s: str) -> None:
+    st.markdown(s, unsafe_allow_html=True)
+
+
+def esc(t) -> str:
+    return _html.escape(str(t))
+
+
+def pill(text, kind: str = "neutral") -> str:
+    return f'<span class="sx-pill {kind}">{esc(text)}</span>'
+
+
+def _kind(sc: int) -> str:
+    return "ok" if sc >= 2 else ("mid" if sc == 1 else "bad")
+
+
+def score_block(sc: int, why: str, label: str = "") -> None:
+    lbl = f'<span class="sx-meta">{esc(label)}</span>' if label else ""
+    html(f'<div class="sx-score"><span class="big sx-pill {_kind(sc)}">{sc}/2</span>{lbl}<span>{esc(why)}</span></div>')
+
+
+def question_block(q: str, gold=None, must=None, flt=None, note: str | None = None) -> None:
+    rows = [f'<div class="row"><span class="lbl">Câu hỏi</span>{esc(q)}</div>']
+    if gold is not None:
+        g = gold if isinstance(gold, str) else ", ".join(gold)
+        rows.append(f'<div class="row"><span class="lbl">Gold</span><span class="sx-doc">{esc(g)}</span></div>')
+    if must:
+        m = must if isinstance(must, str) else " / ".join(must)
+        rows.append(f'<div class="row"><span class="lbl">Đáp án phải chứa</span>{esc(m)}</div>')
+    if flt is not None:
+        rows.append(f'<div class="row"><span class="lbl">Filter</span><span class="sx-doc">{esc(flt)}</span></div>')
+    if note:
+        rows.append(f'<div class="row sx-meta">{esc(note)}</div>')
+    html('<div class="sx-q">' + "".join(rows) + "</div>")
+
+
+def col_title(text: str, note: str | None = None) -> None:
+    html(f'<div class="sx-colh">{esc(text)}</div>' + (f'<div class="sx-note">{esc(note)}</div>' if note else ""))
+
+
+def callout(text_md: str, label: str = "Điểm nhấn") -> None:
+    with st.container(border=True):
+        st.caption(label.upper())
+        st.markdown(text_md)
 
 
 # ============================================================================
@@ -77,7 +169,7 @@ def build_store(strategy_name: str, fp: str) -> tuple[EmbeddingStore, int, dict[
 
 
 # ============================================================================
-# Helpers
+# Helpers: chấm, hiển thị kết quả, filter
 # ============================================================================
 def grade_doc_level(results: list[dict], gold_doc) -> int:
     """Cách chấm 'ngây thơ': chỉ kiểm doc_id gold có trong top-k."""
@@ -95,9 +187,9 @@ def _contains(content: str, must_contain) -> bool:
     return any(n and n.lower() in c for n in needles)
 
 
-def render_results(results: list[dict], must_contain="", gold=None, chars: int = 600) -> None:
+def render_results(results: list[dict], must_contain="", gold=None, chars: int = 420) -> None:
     if not results:
-        st.info("Không có kết quả (filter loại hết ứng viên?)")
+        st.info("Không có kết quả — filter đã loại hết ứng viên.")
         return
     golds = set() if gold is None else ({gold} if isinstance(gold, str) else set(gold))
     top = max(r["score"] for r in results) or 1.0
@@ -105,20 +197,20 @@ def render_results(results: list[dict], must_contain="", gold=None, chars: int =
         meta = r["metadata"]
         hit = _contains(r["content"], must_contain)
         is_gold = meta.get("doc_id") in golds
-        tags = []
-        if is_gold:
-            tags.append("📄 đúng file")
-        if hit:
-            tags.append("✅ chứa đáp án")
-        with st.container(border=True):
-            c1, c2 = st.columns([4, 1])
-            c1.markdown(f"**#{i} · `{meta.get('doc_id')}`** · audience=`{meta.get('audience')}` · chunk {meta.get('chunk_index')}  {' · '.join(tags)}")
-            c2.metric("score", f"{r['score']:.3f}")
-            st.progress(min(1.0, max(0.0, r["score"] / top)))
-            st.text(r["content"][:chars] + ("…" if len(r["content"]) > chars else ""))
+        tags = (pill("đúng file", "neutral") if is_gold else "") + (pill("chứa đáp án", "ok") if hit else "")
+        body = r["content"][:chars] + ("…" if len(r["content"]) > chars else "")
+        pct = max(0.0, min(1.0, r["score"] / top)) * 100
+        html(
+            f'<div class="sx-card{" hit" if hit else ""}">'
+            f'<div class="sx-head"><span class="sx-rank">#{i}</span><span class="sx-doc">{esc(meta.get("doc_id"))}</span>'
+            f'<span class="sx-meta">audience {esc(meta.get("audience"))} · lang {esc(meta.get("language", "–"))} · chunk {esc(meta.get("chunk_index"))}</span>'
+            f'{tags}<span class="sx-pill score">{r["score"]:.3f}</span></div>'
+            f'<div class="sx-bar"><div style="width:{pct:.0f}%"></div></div>'
+            f'<div class="sx-body">{esc(body)}</div></div>'
+        )
 
 
-FILTER_SKIP = {"chunk_index", "source", "retrieved_at", "title", "source_url"}
+FILTER_SKIP = {"chunk_index", "source", "retrieved_at", "title", "source_url", "translated_from"}
 
 
 def metadata_options(store: EmbeddingStore) -> dict[str, list[str]]:
@@ -129,7 +221,7 @@ def metadata_options(store: EmbeddingStore) -> dict[str, list[str]]:
             if k in FILTER_SKIP or v is None:
                 continue
             opts.setdefault(k, set()).add(str(v))
-    order = ["audience", "category", "department", "language", "document_version", "doc_id"]
+    order = ["audience", "language", "category", "department", "document_version", "doc_id"]
     keys = [k for k in order if k in opts] + sorted(k for k in opts if k not in order)
     return {k: sorted(opts[k]) for k in keys}
 
@@ -153,7 +245,7 @@ def filter_builder(store: EmbeddingStore, key: str, default: dict | None = None)
             idx = vals.index(str(default[f])) if f in default and str(default[f]) in vals else 0
             flt[f] = col.selectbox(f, vals, index=idx, key=f"{key}_{f}")
     n = count_candidates(store, flt or None)
-    st.caption(f"metadata_filter = `{flt or None}` → **{n}/{len(store._store)}** chunk còn lại làm ứng viên")
+    html(f'<div class="sx-note">metadata_filter = <span class="sx-doc">{esc(flt or None)}</span> → <b>{n}/{len(store._store)}</b> chunk làm ứng viên</div>')
     return flt or None
 
 
@@ -168,7 +260,7 @@ def agent_answer(store: EmbeddingStore, llm, question: str, results: list[dict])
     agent = KnowledgeBaseAgent(store=store, llm_fn=llm)
     if not results:
         return agent.NO_CONTEXT_ANSWER
-    with st.spinner("Gọi LLM…"):
+    with st.spinner("Đang hỏi LLM…"):
         return llm(agent.build_prompt(question, results))
 
 
@@ -176,27 +268,29 @@ _CITE = re.compile(r"\[(\d+)\]")
 
 
 def show_answer(answer: str, results: list[dict], must_contain="", compact: bool = False) -> None:
-    """Hiện câu trả lời + bảng 'Nguồn trích dẫn' nối [n] → chunk → doc_id → source_url."""
-    st.success(answer)
+    """Câu trả lời + panel 'Nguồn trích dẫn' nối [n] → chunk → doc_id → source_url."""
+    html(f'<div class="sx-answer"><div class="lbl">Trả lời</div>{esc(answer).replace(chr(10), "<br>")}</div>')
     cited = sorted({int(n) for n in _CITE.findall(answer) if 1 <= int(n) <= len(results)})
     if not results:
         return
     if not cited:
         if "không tìm thấy" not in answer.lower():
-            st.warning("⚠️ Agent không trích dẫn [n] — không truy vết được câu trả lời lấy từ đâu.")
+            st.warning("Agent không trích dẫn [n] — không truy vết được câu trả lời lấy từ đâu.")
         return
-    with st.expander(f"📎 Nguồn trích dẫn: {', '.join(f'[{n}]' for n in cited)}", expanded=not compact):
+    with st.expander("Nguồn trích dẫn " + ", ".join(f"[{n}]" for n in cited), expanded=not compact):
         for n in cited:
             r = results[n - 1]
             meta = r["metadata"]
             hit = _contains(r["content"], must_contain)
             url = meta.get("source_url")
-            link = f"[{meta.get('doc_id')}]({url})" if url else f"`{meta.get('doc_id')}`"
-            st.markdown(
-                f"**[{n}]** {link} · audience=`{meta.get('audience')}` · chunk {meta.get('chunk_index')} · score {r['score']:.3f}"
-                + ("  ✅ chunk này chứa gold answer" if hit else ("  ⚠️ chunk này KHÔNG chứa gold answer" if must_contain else ""))
+            doc = esc(meta.get("doc_id"))
+            link = f'<a href="{esc(url)}" target="_blank">{doc}</a>' if url else f'<span class="sx-doc">{doc}</span>'
+            tag = pill("chứa gold answer", "ok") if hit else (pill("không chứa gold answer", "bad") if must_contain else "")
+            snippet = r["content"][:300].replace("\n", " ") + ("…" if len(r["content"]) > 300 else "")
+            html(
+                f'<div class="sx-cite"><b>[{n}]</b> {link} <span class="sx-meta">· audience {esc(meta.get("audience"))} · '
+                f'chunk {esc(meta.get("chunk_index"))} · {r["score"]:.3f}</span> {tag}<div class="txt">{esc(snippet)}</div></div>'
             )
-            st.caption(r["content"][:300].replace("\n", " ") + ("…" if len(r["content"]) > 300 else ""))
 
 
 def score_table(strategies: list[str], top_k: int, fp: str) -> pd.DataFrame:
@@ -215,260 +309,249 @@ def score_table(strategies: list[str], top_k: int, fp: str) -> pd.DataFrame:
 
 
 # ============================================================================
-# Sidebar — key, chiến lược, top_k
+# Sidebar — kết nối + cấu hình
 # ============================================================================
-st.sidebar.title("📚 Softmax — Lab 07")
-
-with st.sidebar.expander("🔑 API key", expanded=not os.getenv("OPENAI_API_KEY")):
-    key_in = st.text_input("OpenAI API key", type="password", placeholder="sk-… (để trống = dùng .env)")
+st.sidebar.markdown("### Kết nối")
+with st.sidebar.expander("OpenAI API key", expanded=not os.getenv("OPENAI_API_KEY")):
+    key_in = st.text_input("API key", type="password", placeholder="sk-… (để trống = dùng .env)")
     chat_model = st.text_input("Chat model", value=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"))
     if key_in.strip():
         os.environ["OPENAI_API_KEY"] = key_in.strip()
         os.environ["EMBEDDING_PROVIDER"] = "openai"
     if chat_model.strip():
         os.environ["OPENAI_CHAT_MODEL"] = chat_model.strip()
-    st.caption("Key chỉ giữ trong phiên chạy này, không ghi ra file.")
+    st.caption("Key chỉ giữ trong phiên chạy, không ghi ra file.")
 
 fp = _fingerprint()
 embedder, llm = get_backends(fp)
 ok_embed = "mock" not in embedder.name.lower()
-st.sidebar.markdown(
-    f"{'🟢' if ok_embed else '🔴'} Embedder: `{embedder.name}`  \n"
-    f"{'🟢' if llm.name != 'demo' else '🔴'} LLM: `{llm.name}`  \n"
-    f"📁 Corpus: `{bench.CORPUS_DIR.name}`"
-)
+ok_llm = llm.name != "demo"
 if not ok_embed:
-    st.sidebar.warning("Đang dùng mock embedder — kết quả không có ngữ nghĩa. Nhập key ở trên.")
+    st.sidebar.warning("Đang dùng mock embedder — kết quả không có ngữ nghĩa. Nhập API key ở trên.")
 
-strategy = st.sidebar.selectbox("Chiến lược chunking (tab Truy vấn / Xem chunk)", list(STRATEGIES))
-top_k = st.sidebar.slider("top_k", 1, 5, 3)
+st.sidebar.markdown("### Cấu hình")
+strategy = st.sidebar.selectbox("Chiến lược chunking", list(STRATEGIES), help="Áp dụng cho Chatbot, Truy vấn, Chunk. Các kịch bản có ô chọn riêng.")
+top_k = st.sidebar.slider("Top-k", 1, 5, 3)
 store, n_chunks, per_doc = build_store(strategy, fp)
-st.sidebar.metric("Số chunk trong store", n_chunks)
-with st.sidebar.expander("Chunk theo tài liệu"):
-    for k, v in sorted(per_doc.items()):
-        st.write(f"`{k}`: {v}")
+with st.sidebar.expander(f"Chunk theo tài liệu ({n_chunks})"):
+    st.dataframe(
+        pd.DataFrame({"doc_id": list(sorted(per_doc)), "chunks": [per_doc[k] for k in sorted(per_doc)]}),
+        hide_index=True, width="stretch", height=260,
+    )
 
-tab_demo, tab_chat, tab_query, tab_chunks, tab_notes = st.tabs(["🎬 Kịch bản demo", "💬 Chatbot", "🔍 Truy vấn tự do", "🧩 Xem chunk", "📖 Ghi chú kỹ thuật"])
+# ============================================================================
+# Header
+# ============================================================================
+def _chip(label: str, value: str, ok: bool | None = None) -> str:
+    dot = "" if ok is None else f'<span class="sx-dot" style="background:{"#16a34a" if ok else "#dc2626"}"></span>'
+    return f'<span class="sx-chip">{dot}{esc(label)} <b>{esc(value)}</b></span>'
+
+
+html('<div class="sx-title">Softmax · Lab 07 — Retrieval & RAG demo</div>'
+     '<div class="sx-sub">Thư viện VinUni · 8 trang × 2 ngôn ngữ · so sánh chiến lược chunking, metadata filter và grounding của agent</div>')
+html('<div class="sx-chips">'
+     + _chip("Embedder", embedder.name, ok_embed)
+     + _chip("LLM", llm.name, ok_llm)
+     + _chip("Corpus", f"{bench.CORPUS_DIR.name} · {len(per_doc)} file")
+     + _chip("Chunker", strategy.split(" — ")[0])
+     + _chip("Chunks", str(n_chunks))
+     + _chip("Top-k", str(top_k))
+     + "</div>")
+
+tab_demo, tab_chat, tab_query, tab_chunks, tab_notes = st.tabs(["Kịch bản", "Chatbot", "Truy vấn", "Chunk", "Ghi chú kỹ thuật"])
 
 
 # ============================================================================
 # Tab 1 — Kịch bản demo chọn sẵn
 # ============================================================================
 SCENARIOS = {
-    "1 · Metadata filter — 5 phần: 3 đối tượng · trường bất kỳ · lọc trước/sau · mất recall · lọc sai trường": "filter",
-    "2 · So sánh chiến lược chunking — Q4 (bullet bị tách, ai giữ được khối?)": "chunking",
-    "3 · Nguồn chính thức mâu thuẫn — Q2 (FAQ 20.000 vs faculty 10.000 VND)": "conflict",
-    "4 · Cross-lingual trước/sau — Q3 chỉ corpus EN (0đ) vs có bản VI (2đ)": "failure",
-    "5 · Chấm hai mức — doc_id vs chunk chứa đáp án (kết quả bị thổi phồng)": "twolevel",
-    "6 · Bảng tổng hợp 3 chiến lược × 5 query": "summary",
-    "7 · Ngôn ngữ — cùng câu hỏi VI/EN, cùng ngôn ngữ thắng tuyệt đối": "language",
+    "1 · Metadata filter": ("filter", "Cùng một câu hỏi, đổi filter là đổi câu trả lời — và khi nào filter làm hại."),
+    "2 · So sánh chunking (Q4)": ("chunking", "Ba chiến lược trên cùng câu hỏi: chiến lược nào giữ được khối bullet chứa số liệu?"),
+    "3 · Nguồn mâu thuẫn (Q2)": ("conflict", "Hai trang chính thức nói hai con số; retrieval đúng nhưng agent có thể trích sai nguồn."),
+    "4 · Cross-lingual trước / sau (Q3)": ("failure", "Chỉ corpus tiếng Anh: 0/2 ở mọi chiến lược. Thêm bản tiếng Việt: 2/2."),
+    "5 · Chấm hai mức": ("twolevel", "Chấm theo doc_id thổi phồng kết quả so với chấm theo chunk chứa đáp án."),
+    "6 · Tổng hợp 3 chiến lược × 5 query": ("summary", "Bảng điểm và biểu đồ cho ba chiến lược trên năm benchmark query."),
+    "7 · Ngôn ngữ": ("language", "Cùng câu hỏi bằng tiếng Việt / tiếng Anh, có hoặc không ép language."),
 }
 
 with tab_demo:
-    pick = st.selectbox("Chọn kịch bản", list(SCENARIOS))
-    kind = SCENARIOS[pick]
-    run = st.button("▶ Chạy kịch bản", type="primary")
+    c_sel, c_btn = st.columns([4, 1])
+    pick = c_sel.selectbox("Kịch bản", list(SCENARIOS))
+    kind, desc = SCENARIOS[pick]
+    c_btn.markdown("<div style='height:1.75rem'></div>", unsafe_allow_html=True)
+    run = c_btn.button("Chạy kịch bản", type="primary", width="stretch")
+    st.caption(desc)
 
     # ---------------------------------------------------------------- 1
     if kind == "filter":
         q = Q["Q1"]
-        strat = st.selectbox("Chiến lược", MAIN3, key="s1")
-        part = st.radio(
+        cs, cp = st.columns([1, 2])
+        strat = cs.selectbox("Chiến lược", MAIN3, key="s1")
+        part = cp.radio(
             "Phần",
-            [
-                "A · Cùng câu hỏi, 3 đối tượng (không lọc / student / faculty)",
-                "B · Lọc theo trường bất kỳ (category, department, doc_id, …)",
-                "C · Lọc TRƯỚC vs lọc SAU top-k",
-                "D · Filter làm hại — mất recall",
-                "E · Lọc sai trường — đáp án nằm ngoài tập lọc",
-            ],
-            horizontal=False,
-            key="s1_part",
+            ["A · Ba đối tượng", "B · Lọc theo trường bất kỳ", "C · Lọc trước vs lọc sau", "D · Filter làm mất recall", "E · Lọc sai trường"],
+            horizontal=True, key="s1_part",
         )
         s_store, _, _ = build_store(strat, fp)
 
         if part.startswith("A"):
-            st.markdown(f"**Câu hỏi:** {q['q']}  \n**Gold:** `{q['gold_doc']}` · must_contain=`{q['must_contain']}`")
+            question_block(q["q"], q["gold_doc"], q["must_contain"], note="Gold = trang undergraduate. Câu hỏi không nói người hỏi là ai.")
             if run:
                 cols = st.columns(3)
-                for col, (label, flt) in zip(cols, [("❌ Không lọc", None), ("🎓 audience=student", {"audience": "student"}), ("👩‍🏫 audience=faculty", {"audience": "faculty"})]):
+                for col, (label, flt) in zip(cols, [("Không lọc", None), ("audience = student", {"audience": "student"}), ("audience = faculty", {"audience": "faculty"})]):
                     with col:
-                        st.subheader(label)
                         res = s_store.search_with_filter(q["q"], top_k=top_k, metadata_filter=flt)
                         sc, why = bench.grade(res, q["gold_doc"], q["must_contain"])
-                        st.caption(f"ứng viên: **{count_candidates(s_store, flt)}** chunk")
-                        st.markdown(f"### {sc}/2")
-                        st.caption(why + " *(gold = trang undergraduate)*")
-                        render_results(res, q["must_contain"], q["gold_doc"], chars=260)
-                        st.markdown("**🤖 Agent:**")
+                        col_title(label, f"{count_candidates(s_store, flt)} ứng viên")
+                        score_block(sc, why)
+                        render_results(res, q["must_contain"], q["gold_doc"], chars=240)
                         show_answer(agent_answer(s_store, llm, q["q"], res), res, q["must_contain"], compact=True)
-                st.info(
-                    "**Điểm nhấn:** Cùng một câu hỏi, đổi `audience` là đổi câu trả lời — *3 cuốn / 2 tuần* (student) hay "
-                    "*5 cuốn / 1 tháng* (faculty). Không lọc thì top-3 là chunk phạt tiền của FAQ và trang faculty: similarity đo "
-                    "*chủ đề mượn sách*, không đo *đúng đối tượng*. Metadata là thứ duy nhất trả lời được 'ai đang hỏi'."
+                callout(
+                    "Cùng một câu hỏi, đổi `audience` là đổi câu trả lời — *3 cuốn / 2 tuần* (student) hay *5 cuốn / 1 tháng* (faculty). "
+                    "Không lọc, top-3 là chunk của trang graduate/faculty: similarity đo *chủ đề mượn sách*, không đo *đúng đối tượng*. "
+                    "Metadata là thứ duy nhất trả lời được câu hỏi \"ai đang hỏi\"."
                 )
 
         elif part.startswith("B"):
-            st.markdown("Dựng filter từ **bất kỳ trường metadata nào** trong front matter — kết hợp nhiều trường (AND).")
+            st.caption("Dựng filter từ bất kỳ trường metadata nào trong front matter; nhiều trường kết hợp bằng AND.")
             question = st.text_input("Câu hỏi", value=q["q"], key="s1b_q")
             flt = filter_builder(s_store, key="s1b")
             if run and question.strip():
                 res = s_store.search_with_filter(question, top_k=top_k, metadata_filter=flt)
                 render_results(res, chars=300)
-                st.markdown("**🤖 Agent:**")
                 show_answer(agent_answer(s_store, llm, question, res), res, "", compact=True)
-                st.info(
-                    "**Điểm nhấn:** `search_with_filter` so khớp `==` trên mọi cặp key/value → lọc được theo `category` "
-                    "(fees / borrowing / access / spaces / faq), `doc_id` (một file), `language`, `document_version`… "
-                    "Filter càng chặt, ứng viên càng ít — xem số chunk còn lại ở trên."
+                callout(
+                    "`search_with_filter` so khớp `==` trên mọi cặp key/value → lọc được theo `category` (fees / borrowing / access / spaces / faq), "
+                    "`language`, `doc_id` (một file), `document_version`… Filter càng chặt, ứng viên càng ít — xem số chunk còn lại ở trên."
                 )
 
         elif part.startswith("C"):
-            st.markdown(f"**Câu hỏi:** {q['q']} · filter `audience=student`")
+            question_block(q["q"], flt=q["filter"])
             if run:
                 c1, c2 = st.columns(2)
                 with c1:
-                    st.subheader("✅ Lọc TRƯỚC rồi search (cách đúng)")
                     res = s_store.search_with_filter(q["q"], top_k=top_k, metadata_filter=q["filter"])
-                    st.caption(f"{count_candidates(s_store, q['filter'])} ứng viên → top-{top_k}")
-                    render_results(res, q["must_contain"], q["gold_doc"], chars=260)
+                    col_title("Lọc trước rồi search — cách đúng", f"{count_candidates(s_store, q['filter'])} ứng viên → top-{top_k}")
+                    render_results(res, q["must_contain"], q["gold_doc"], chars=240)
                 with c2:
-                    st.subheader("❌ Search top-k rồi mới lọc (lỗi hay gặp)")
                     plain = s_store.search(q["q"], top_k=top_k)
                     post = [r for r in plain if r["metadata"].get("audience") == "student"]
-                    st.caption(f"{len(s_store._store)} ứng viên → top-{top_k} → lọc còn **{len(post)}**")
-                    st.markdown("Top-k trước khi lọc:")
-                    render_results(plain, q["must_contain"], q["gold_doc"], chars=120)
-                    st.markdown(f"Sau khi lọc: **{len(post)} kết quả**")
-                    render_results(post, q["must_contain"], q["gold_doc"], chars=260)
-                st.info(
-                    "**Điểm nhấn:** Lọc sau top-k thì k slot đã bị chunk sai chiếm hết → **0 kết quả** dù store còn 13 chunk hợp lệ. "
-                    "Đây là lỗi `docs/EVALUATION.md` và lab doc nhắc thẳng: *search_with_filter lọc SAU khi search thay vì trước*. "
+                    col_title("Search top-k rồi mới lọc — lỗi hay gặp", f"{len(s_store._store)} ứng viên → top-{top_k} → lọc còn {len(post)}")
+                    st.caption("Top-k trước khi lọc")
+                    render_results(plain, q["must_contain"], q["gold_doc"], chars=110)
+                    st.caption(f"Sau khi lọc: {len(post)} kết quả")
+                    render_results(post, q["must_contain"], q["gold_doc"], chars=240)
+                callout(
+                    "Lọc sau top-k thì k slot đã bị chunk sai chiếm hết → **0 kết quả** dù store còn hàng chục chunk hợp lệ. "
+                    "Đây là lỗi lab doc nhắc thẳng: *search_with_filter lọc SAU khi search thay vì trước*. "
                     "Code của nhóm lọc trước, rồi cho cả `search()` và `search_with_filter()` đi chung `_search_records()`."
                 )
 
         elif part.startswith("D"):
             qh = "Giảng viên được mượn sách tối đa trong bao lâu?"
-            st.markdown(f"**Câu hỏi:** {qh}  \n**Đáp án đúng:** *up to 6 months* (faculty mượn giáo trình) — nằm trong `borrowing-privilege` và `library-faq`, cả hai `audience=all`.")
+            question_block(qh, ["borrowing-privilege", "library-faq"], "6 months", note="Đáp án 'up to 6 months' chỉ nằm trong hai trang audience = all.")
             if run:
                 c1, c2 = st.columns(2)
-                for col, (label, flt) in zip((c1, c2), [("❌ Không lọc", None), ("👩‍🏫 audience=faculty", {"audience": "faculty"})]):
+                for col, (label, flt) in zip((c1, c2), [("Không lọc", None), ("audience = faculty", {"audience": "faculty"})]):
                     with col:
-                        st.subheader(label)
                         res = s_store.search_with_filter(qh, top_k=top_k, metadata_filter=flt)
-                        st.caption(f"ứng viên: **{count_candidates(s_store, flt)}** chunk")
-                        render_results(res, "6 months", ["borrowing-privilege", "library-faq"], chars=260)
-                        st.markdown("**🤖 Agent:**")
+                        col_title(label, f"{count_candidates(s_store, flt)} ứng viên")
+                        render_results(res, "6 months", ["borrowing-privilege", "library-faq"], chars=240)
                         show_answer(agent_answer(s_store, llm, qh, res), res, "6 months", compact=True)
-                st.info(
-                    "**Điểm nhấn:** Filter `audience=faculty` **loại luôn** hai trang `audience=all` — là nơi duy nhất ghi *6 months* — "
-                    "nên agent chỉ còn *one month* của graduate. Precision đổi bằng recall. Cách sửa dữ liệu: gán `audience` ở mức "
-                    "section (tách bảng hạn mức thành nhiều file), hoặc cho phép filter `audience in {faculty, all}`."
+                callout(
+                    "Filter `audience=faculty` **loại luôn** hai trang `audience=all` — nơi duy nhất ghi *6 months* — nên agent chỉ còn *one month* của graduate. "
+                    "Precision đổi bằng recall. Cách sửa dữ liệu: gán `audience` ở mức section (tách bảng hạn mức thành nhiều file), "
+                    "hoặc cho phép filter `audience in {faculty, all}`."
                 )
 
         elif part.startswith("E"):
             q2 = Q["Q2"]
-            st.markdown(f"**Câu hỏi:** {q2['q']}  \n**Đáp án:** *20,000 VND/day* — nằm trong `library-faq` (`category=faq`), **không** nằm trong `fines-and-charges` (`category=fees`).")
+            question_block(q2["q"], q2["gold_doc"], q2["must_contain"], note="20,000 VND/day nằm ở FAQ (category = faq), không ở trang Fines and other charges (category = fees).")
             if run:
                 c1, c2 = st.columns(2)
-                for col, (label, flt) in zip((c1, c2), [("❌ Không lọc", None), ("💸 category=fees (nghe hợp lý!)", {"category": "fees"})]):
+                for col, (label, flt) in zip((c1, c2), [("Không lọc", None), ("category = fees — nghe hợp lý", {"category": "fees"})]):
                     with col:
-                        st.subheader(label)
                         res = s_store.search_with_filter(q2["q"], top_k=top_k, metadata_filter=flt)
                         sc, why = bench.grade(res, q2["gold_doc"], q2["must_contain"])
-                        st.caption(f"ứng viên: **{count_candidates(s_store, flt)}** chunk")
-                        st.markdown(f"### {sc}/2")
-                        st.caption(why)
-                        render_results(res, q2["must_contain"], q2["gold_doc"], chars=260)
-                        st.markdown("**🤖 Agent:**")
+                        col_title(label, f"{count_candidates(s_store, flt)} ứng viên")
+                        score_block(sc, why)
+                        render_results(res, q2["must_contain"], q2["gold_doc"], chars=240)
                         show_answer(agent_answer(s_store, llm, q2["q"], res), res, q2["must_contain"], compact=True)
-                st.info(
-                    "**Điểm nhấn:** `category=fees` nghe rất đúng cho câu hỏi về tiền phạt, nhưng trang *Fines and other charges* "
-                    "chỉ nói về phí hư hỏng — con số 20.000 VND/ngày lại ở FAQ. Metadata chỉ tốt khi **schema khớp với câu hỏi thật**; "
-                    "gán nhãn theo tiêu đề trang mà không đọc nội dung là bẫy."
+                callout(
+                    "`category=fees` nghe rất đúng cho câu hỏi về tiền phạt, nhưng trang *Fines and other charges* chỉ nói về phí hư hỏng — "
+                    "con số 20.000 VND/ngày lại ở FAQ. Metadata chỉ tốt khi **schema khớp với câu hỏi thật**; gán nhãn theo tiêu đề trang mà không đọc nội dung là bẫy."
                 )
 
     # ---------------------------------------------------------------- 2
     elif kind == "chunking":
         q = Q["Q4"]
-        st.markdown(f"**Câu hỏi:** {q['q']}  \n**Gold:** `{q['gold_doc']}` · must_contain=`{q['must_contain']}`")
+        question_block(q["q"], q["gold_doc"], q["must_contain"])
         if run:
             cols = st.columns(3)
             for col, name in zip(cols, MAIN3):
                 with col:
                     s_store, s_n, _ = build_store(name, fp)
                     res, sc, why = run_query(s_store, q, top_k)
-                    st.subheader(name.split(" — ")[0])
-                    st.caption(f"{s_n} chunks · {name.split(' — ')[1]}")
-                    st.markdown(f"### {sc}/2")
-                    st.caption(why)
-                    render_results(res, q["must_contain"], q["gold_doc"], chars=350)
-            st.info(
-                "**Điểm nhấn:** Đáp án là **một bullet** trong danh sách quy định phòng học. Recursive cắt ở `\\n\\n` rồi `\\n` nên bullet "
-                "bị tách từng dòng; FixedSize cắt mù 500 ký tự — cả hai đều để chunk *'Phải có ít nhất 2 người…'* (từ vựng gần câu hỏi: nhóm, buổi) "
-                "lên top-1, còn bullet *'2 giờ mỗi buổi, 4 buổi mỗi tuần'* rớt xuống hạng 3. Heading giữ **cả khối bullet** dưới `## Phòng học nhóm` "
-                "nên top-1 chứa đáp án → 2/2. Thứ quyết định không phải chunker 'thông minh' mà là *khối thông tin có bị tách khỏi ngữ cảnh gần nó không*."
+                    col_title(name.split(" — ")[0], f"{s_n} chunks · {name.split(' — ')[1]}")
+                    score_block(sc, why)
+                    render_results(res, q["must_contain"], q["gold_doc"], chars=320)
+            callout(
+                "Đáp án là **một bullet** trong danh sách quy định phòng học. Recursive cắt ở `\\n\\n` rồi `\\n` nên bullet bị tách từng dòng; "
+                "FixedSize cắt mù 500 ký tự — cả hai đều để chunk *'Phải có ít nhất 2 người…'* (từ vựng gần câu hỏi: nhóm, buổi) lên top-1, "
+                "còn bullet *'2 giờ mỗi buổi, 4 buổi mỗi tuần'* rớt xuống hạng 3. Heading giữ **cả khối bullet** dưới `## Phòng học nhóm` nên top-1 chứa đáp án. "
+                "Thứ quyết định không phải chunker 'thông minh' mà là *khối thông tin có bị tách khỏi ngữ cảnh gần nó không*."
             )
 
     # ---------------------------------------------------------------- 3
     elif kind == "conflict":
         q = Q["Q2"]
-        st.markdown(f"**Câu hỏi:** {q['q']}  \n**Gold:** `{q['gold_doc']}` · must_contain=`{q['must_contain']}`")
         strat = st.selectbox("Chiến lược", MAIN3, key="s3")
+        question_block(q["q"], q["gold_doc"], q["must_contain"], note="FAQ: 20.000 VND/ngày. Trang graduate/faculty: 10.000 VND/business day.")
         if run:
             s_store, _, _ = build_store(strat, fp)
             res, sc, why = run_query(s_store, q, top_k)
-            st.markdown(f"### Điểm retrieval: {sc}/2 — {why}")
+            score_block(sc, why, "Retrieval")
             render_results(res, q["must_contain"], q["gold_doc"])
-            st.subheader("🤖 Agent answer")
             ans = agent_answer(s_store, llm, q["q"], res)
             show_answer(ans, res, q["must_contain"])
             has10 = "10,000" in ans or "10.000" in ans
             has20 = "20,000" in ans or "20.000" in ans
-            verdict = "agent lấy **10.000 VND** từ trang faculty (chunk có 'per business day')" if has10 and not has20 else \
-                      "agent lấy **20.000 VND** từ FAQ" if has20 and not has10 else "agent nêu cả hai / không rõ"
+            verdict = ("agent lấy **10.000 VND** từ trang faculty (chunk 'per business day')" if has10 and not has20
+                       else "agent lấy **20.000 VND** từ FAQ" if has20 and not has10
+                       else "agent nêu cả hai con số / không rõ nguồn")
             st.markdown(f"**Nhận xét:** {verdict}.")
-            st.info(
-                "**Điểm nhấn:** Hai trang chính thức của cùng thư viện nói hai con số khác nhau (FAQ: 20.000 VND/ngày; "
-                "trang graduate/faculty: 10.000 VND/business day). Retrieval vẫn được 2/2 vì top-1 chứa đáp án gold, "
-                "nhưng agent có thể chọn chunk khác. Corpus không phân xử được vì `document_version` cả hai đều `not-stated`. "
-                "Bài học: top-3 đúng chưa đủ, phải đọc agent answer; `document_version` không phải trường hình thức."
+            callout(
+                "Hai trang chính thức của cùng thư viện nói hai con số khác nhau. Retrieval vẫn được 2/2 vì top-1 chứa đáp án gold, "
+                "nhưng agent có thể chọn chunk khác — đổi chiến lược ở trên để thấy ba chunker cho ba câu trả lời. "
+                "Corpus không phân xử được vì `document_version` cả hai đều `not-stated`. Bài học: top-3 đúng chưa đủ, phải đọc agent answer."
             )
 
     # ---------------------------------------------------------------- 4
     elif kind == "failure":
         q = Q["Q3"]
-        st.markdown(
-            f"**Câu hỏi:** {q['q']}  \n**Đáp án:** *overdue for more than 05 days* / *quá hạn hơn 05 ngày* — có trong `equipment-loans` (EN) và `equipment-loans-vi` (VI)."
-        )
-        st.markdown("Trước khi dịch, corpus chỉ có tiếng Anh và Q3 **0đ ở cả 3 chiến lược**. Tái hiện bằng filter `language=en`, rồi so với corpus song ngữ.")
         strat = st.selectbox("Chiến lược", MAIN3, key="s4")
+        question_block(q["q"], q["gold_doc"], q["must_contain"], note="Trước khi dịch, corpus chỉ có tiếng Anh và Q3 0đ ở cả 3 chiến lược. Tái hiện bằng filter language = en.")
         if run:
             s_store, _, _ = build_store(strat, fp)
             c1, c2 = st.columns(2)
             with c1:
-                st.subheader("🇬🇧 Chỉ corpus EN (`language=en`) — như trước khi dịch")
                 res = s_store.search_with_filter(q["q"], top_k=top_k, metadata_filter={"language": "en"})
                 sc, why = bench.grade(res, q["gold_doc"], q["must_contain"])
-                st.markdown(f"### {sc}/2")
-                st.caption(why)
-                render_results(res, q["must_contain"], q["gold_doc"], chars=280)
-                st.markdown("**🤖 Agent:**")
+                col_title("Chỉ corpus EN (language = en)", "như trước khi dịch")
+                score_block(sc, why)
+                render_results(res, q["must_contain"], q["gold_doc"], chars=260)
                 show_answer(agent_answer(s_store, llm, q["q"], res), res, q["must_contain"], compact=True)
             with c2:
-                st.subheader("🇻🇳🇬🇧 Corpus song ngữ (không filter)")
                 res2 = s_store.search_with_filter(q["q"], top_k=top_k, metadata_filter=None)
                 sc2, why2 = bench.grade(res2, q["gold_doc"], q["must_contain"])
-                st.markdown(f"### {sc2}/2")
-                st.caption(why2)
-                render_results(res2, q["must_contain"], q["gold_doc"], chars=280)
-                st.markdown("**🤖 Agent:**")
+                col_title("Corpus song ngữ (không filter)", "sau khi dịch")
+                score_block(sc2, why2)
+                render_results(res2, q["must_contain"], q["gold_doc"], chars=260)
                 show_answer(agent_answer(s_store, llm, q["q"], res2), res2, q["must_contain"], compact=True)
-            st.info(
-                "**Điểm nhấn:** Câu hỏi tiếng Việt *'quá hạn bao nhiêu ngày thì bị coi là mất'* trên corpus tiếng Anh: chunk *'fined for returning "
-                "items late… damaged or lost'* của trang faculty gần nghĩa hơn chunk *'overdue for more than 05 days'* — score chỉ ~0.3, "
-                "chunk có đáp án không lọt top-3. Thêm bản dịch VI: score nhảy lên ~0.7, top-1 chứa đáp án ngay. "
-                "Lỗi này **không nằm ở chunker** (cả 3 chiến lược cùng 0đ trước đó) mà ở khoảng cách ngôn ngữ giữa query và corpus."
+            callout(
+                "Câu hỏi tiếng Việt *'quá hạn bao nhiêu ngày thì bị coi là mất'* trên corpus tiếng Anh: chunk *'fined for returning items late… lost'* "
+                "của trang faculty gần nghĩa hơn chunk *'overdue for more than 05 days'* — score chỉ ~0.3, chunk có đáp án không lọt top-3. "
+                "Thêm bản dịch: score ~0.7, top-1 chứa đáp án. Lỗi **không nằm ở chunker** (cả 3 cùng 0đ trước đó) mà ở khoảng cách ngôn ngữ giữa query và corpus."
             )
 
     # ---------------------------------------------------------------- 5
@@ -483,14 +566,14 @@ with tab_demo:
                 rows.append({"Query": key, "Chấm theo doc_id": sc_doc, "Chấm theo chunk có đáp án": sc_chunk, "Ghi chú": why})
             df = pd.DataFrame(rows)
             tot_doc, tot_chunk = int(df["Chấm theo doc_id"].sum()), int(df["Chấm theo chunk có đáp án"].sum())
-            c1, c2 = st.columns(2)
-            c1.metric("Tổng chấm theo doc_id", f"{tot_doc}/10")
-            c2.metric("Tổng chấm theo chunk", f"{tot_chunk}/10", delta=tot_chunk - tot_doc)
+            c1, c2, _ = st.columns([1, 1, 2])
+            c1.metric("Chấm theo doc_id", f"{tot_doc}/10")
+            c2.metric("Chấm theo chunk", f"{tot_chunk}/10", delta=tot_chunk - tot_doc)
             st.dataframe(df, width="stretch", hide_index=True)
-            st.info(
-                "**Điểm nhấn:** Chỉ kiểm `doc_id` gold có trong top-3 sẽ thổi phồng kết quả — một chiến lược có thể lấy trọn 3 slot "
-                "từ đúng file mà không chunk nào chứa câu trả lời (Q1, Q4, Q5: top-3 toàn đúng file, chunk có số liệu ở hạng 2–3). "
-                "`docs/SCORING.md` yêu cầu *top-3 có chunk liên quan **và** agent trả lời đúng*, nên phải chấm ở mức nội dung."
+            callout(
+                "Chỉ kiểm `doc_id` gold có trong top-3 sẽ thổi phồng kết quả — một chiến lược có thể lấy trọn 3 slot từ đúng file mà không chunk nào chứa câu trả lời "
+                "(Q1, Q4, Q5: top-3 toàn đúng file, chunk có số liệu ở hạng 2–3). `docs/SCORING.md` yêu cầu *top-3 có chunk liên quan **và** agent trả lời đúng*, "
+                "nên phải chấm ở mức nội dung."
             )
 
     # ---------------------------------------------------------------- 6
@@ -498,68 +581,142 @@ with tab_demo:
         chosen = st.multiselect("Chiến lược", list(STRATEGIES), default=MAIN3, key="s6")
         if run and chosen:
             df = score_table(chosen, top_k, fp)
-            st.dataframe(df, width="stretch", hide_index=True)
-            st.bar_chart(df.set_index("Chiến lược")["Tổng /10"])
+            c1, c2 = st.columns([3, 2])
+            c1.dataframe(df, width="stretch", hide_index=True)
+            c2.bar_chart(df.set_index("Chiến lược")["Tổng /10"], height=220)
             with st.expander("5 benchmark query"):
                 for key, q in Q.items():
-                    st.markdown(f"**{key}.** {q['q']}  \n gold=`{q['gold_doc']}` · must_contain=`{q['must_contain']}` · filter=`{q['filter']}`")
-            st.info(
-                "**Điểm nhấn:** Cùng 16 file (8 EN + 8 VI), cùng 5 câu, chỉ đổi một dòng chunker mà điểm dao động 7–9/10. "
-                "Heading thắng vì giữ trọn khối bullet/mục quy định dưới tiêu đề (Q1, Q4 top-1). Trước khi có bản VI, điểm là 4/7/7 và Q3 "
-                "0đ ở cả ba — thêm dữ liệu cùng ngôn ngữ với query nâng mọi chiến lược lên, nhiều hơn bất kỳ thay đổi chunker nào."
+                    question_block(f"{key}. {q['q']}", q["gold_doc"], q["must_contain"], q["filter"])
+            callout(
+                "Cùng 16 file (8 EN + 8 VI), cùng 5 câu, chỉ đổi một dòng chunker mà điểm dao động 7–9/10. Heading thắng vì giữ trọn khối bullet/mục quy định dưới tiêu đề. "
+                "Trước khi có bản VI, điểm là 4/7/7 và Q3 0đ ở cả ba — thêm dữ liệu cùng ngôn ngữ với query nâng mọi chiến lược lên, nhiều hơn bất kỳ thay đổi chunker nào."
             )
-
 
     # ---------------------------------------------------------------- 7
     elif kind == "language":
-        st.markdown(
-            "Corpus có **8 trang × 2 ngôn ngữ** (bản EN gốc + bản VI dịch, cùng `source_url`, `translated_from` trỏ về nhau). "
-            "Hỏi cùng một câu bằng hai thứ tiếng, có/không ép `language` để thấy embedding ưu tiên ngôn ngữ đến mức nào."
-        )
+        st.caption("Corpus có 8 trang × 2 ngôn ngữ (bản EN gốc + bản VI dịch, cùng source_url). Hỏi cùng một câu bằng hai thứ tiếng, có/không ép language.")
         strat = st.selectbox("Chiến lược", MAIN3, key="s7")
-        q_vi = st.text_input("Câu hỏi tiếng Việt", value=Q["Q1"]["q"], key="s7_vi")
-        q_en = st.text_input("Câu hỏi tiếng Anh", value="How many books can I borrow and for how long?", key="s7_en")
+        c1, c2 = st.columns(2)
+        q_vi = c1.text_input("Câu hỏi tiếng Việt", value=Q["Q1"]["q"], key="s7_vi")
+        q_en = c2.text_input("Câu hỏi tiếng Anh", value="How many books can I borrow and for how long?", key="s7_en")
         base = {"audience": "student"}
         if run:
             s_store, _, _ = build_store(strat, fp)
             cells = [
-                ("🇻🇳 hỏi VI · không ép ngôn ngữ", q_vi, dict(base)),
-                ("🇻🇳 hỏi VI · ép `language=en`", q_vi, {**base, "language": "en"}),
-                ("🇬🇧 hỏi EN · không ép ngôn ngữ", q_en, dict(base)),
-                ("🇬🇧 hỏi EN · ép `language=vi`", q_en, {**base, "language": "vi"}),
+                ("Hỏi VI · không ép ngôn ngữ", q_vi, dict(base)),
+                ("Hỏi VI · language = en", q_vi, {**base, "language": "en"}),
+                ("Hỏi EN · không ép ngôn ngữ", q_en, dict(base)),
+                ("Hỏi EN · language = vi", q_en, {**base, "language": "vi"}),
             ]
             rows = []
             r1, r2 = st.columns(2), st.columns(2)
             for col, (label, qq, flt) in zip(list(r1) + list(r2), cells):
                 with col:
-                    st.subheader(label)
                     res = s_store.search_with_filter(qq, top_k=top_k, metadata_filter=flt)
                     langs = [r["metadata"].get("language") for r in res]
                     top = res[0]["score"] if res else 0.0
-                    st.caption(f"ứng viên: {count_candidates(s_store, flt)} · top-1 score **{top:.3f}** · ngôn ngữ top-{top_k}: `{langs}`")
-                    render_results(res, "", None, chars=200)
-                    rows.append({"Trường hợp": label, "ứng viên": count_candidates(s_store, flt), "top-1 score": round(top, 3), "ngôn ngữ top-k": ",".join(langs)})
+                    col_title(label, f"{count_candidates(s_store, flt)} ứng viên · top-1 {top:.3f} · ngôn ngữ top-{top_k}: {', '.join(map(str, langs))}")
+                    render_results(res, "", None, chars=180)
+                    rows.append({"Trường hợp": label, "Ứng viên": count_candidates(s_store, flt), "Top-1 score": round(top, 3), "Ngôn ngữ top-k": ", ".join(map(str, langs))})
             st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
-            st.info(
-                "**Điểm nhấn:** Không ép ngôn ngữ, top-3 **luôn cùng ngôn ngữ với câu hỏi** (VI → toàn chunk VI, EN → toàn chunk EN) với score ~0.6–0.7; "
-                "ép sang ngôn ngữ kia score rớt còn ~0.25–0.4 nhưng vẫn tìm đúng trang → cross-lingual *có* hoạt động, chỉ yếu hơn nhiều. "
-                "Hệ quả: trong corpus song ngữ, bản dịch là thứ quyết định chất lượng retrieval cho người dùng tiếng Việt; "
-                "`language` là trường lọc thật (không phải để cho có) khi muốn agent trích dẫn đúng bản gốc."
+            callout(
+                "Không ép ngôn ngữ, top-3 **luôn cùng ngôn ngữ với câu hỏi** với score ~0.6–0.7; ép sang ngôn ngữ kia score rớt còn ~0.25–0.4 nhưng vẫn tìm đúng trang "
+                "→ cross-lingual *có* hoạt động, chỉ yếu hơn nhiều. Hệ quả: trong corpus song ngữ, bản dịch quyết định chất lượng retrieval cho người dùng tiếng Việt; "
+                "`language` là trường lọc thật khi muốn agent trích dẫn đúng bản gốc."
             )
 
+
 # ============================================================================
-# Tab 2 — Truy vấn tự do
+# Tab 2 — Chatbot: hỏi đáp tự do, mỗi lượt = 1 vòng RAG đầy đủ
+# ============================================================================
+SUGGESTED = [
+    "Sinh viên được mượn bao nhiêu sách và trong bao lâu?",
+    "Giảng viên mượn giáo trình được tối đa bao lâu?",
+    "Trả sách muộn bị phạt bao nhiêu?",
+    "Thư viện mở cửa mấy giờ vào cuối tuần?",
+    "Mượn laptop của thư viện được bao lâu?",
+    "Đặt phòng học nhóm bằng cách nào?",
+    "Làm mất sách thì phải làm gì?",
+    "Có được mang tài liệu tham khảo về nhà không?",
+]
+
+
+def _pick_filter_from_question(question: str) -> dict | None:
+    """Gợi ý filter đơn giản từ từ khoá trong câu hỏi (chỉ để demo)."""
+    q = question.lower()
+    if any(w in q for w in ["giảng viên", "faculty", "cao học", "sau đại học", "graduate"]):
+        return {"audience": "faculty"}
+    if any(w in q for w in ["sinh viên", "student", "undergraduate"]):
+        return {"audience": "student"}
+    return None
+
+
+def _turn_meta(strategy_name: str, flt, n_cand: int, k: int) -> None:
+    html('<div class="sx-chips" style="margin:.1rem 0 .4rem 0">'
+         + _chip("Chunker", strategy_name.split(" — ")[0]) + _chip("Filter", str(flt)) + _chip("Ứng viên", str(n_cand)) + _chip("Top-k", str(k))
+         + "</div>")
+
+
+with tab_chat:
+    st.caption("Mỗi lượt là một vòng RAG đầy đủ: embed câu hỏi → lọc metadata (nếu có) → top-k chunk → prompt có trích dẫn → LLM. "
+               "Mở Nguồn trích dẫn dưới mỗi câu trả lời để truy vết.")
+    cc1, cc2, cc3 = st.columns([2, 2, 1])
+    auto_filter = cc1.toggle("Tự gợi ý filter audience từ câu hỏi", value=False, key="chat_auto",
+                             help="Bật để thấy filter làm mất recall với câu hỏi về giảng viên.")
+    manual = cc2.toggle("Đặt filter thủ công", value=False, key="chat_manual")
+    if cc3.button("Xoá hội thoại", key="chat_clear", width="stretch"):
+        st.session_state["chat_history"] = []
+        st.rerun()
+    chat_filter = filter_builder(store, key="chat") if manual else None
+
+    with st.expander("Câu hỏi gợi ý"):
+        cols = st.columns(2)
+        for i, sq in enumerate(SUGGESTED):
+            if cols[i % 2].button(sq, key=f"sug_{i}", width="stretch"):
+                st.session_state["chat_pending"] = sq
+
+    history: list[dict] = st.session_state.setdefault("chat_history", [])
+    for turn in history:
+        with st.chat_message("user"):
+            st.write(turn["q"])
+        with st.chat_message("assistant"):
+            _turn_meta(turn["strategy"], turn["filter"], turn["n_cand"], turn["top_k"])
+            show_answer(turn["answer"], turn["results"], "", compact=True)
+
+    pending = st.session_state.pop("chat_pending", None)
+    typed = st.chat_input("Nhập câu hỏi về thư viện VinUni…", key="chat_input")
+    question = typed or pending
+    if question:
+        flt = chat_filter if manual else (_pick_filter_from_question(question) if auto_filter else None)
+        with st.chat_message("user"):
+            st.write(question)
+        with st.chat_message("assistant"):
+            with st.spinner("Đang truy xuất và hỏi LLM…"):
+                results = store.search_with_filter(question, top_k=top_k, metadata_filter=flt)
+                answer = agent_answer(store, llm, question, results)
+            _turn_meta(strategy, flt, count_candidates(store, flt), top_k)
+            show_answer(answer, results, "", compact=True)
+            with st.expander(f"Top-{top_k} chunk đã dùng"):
+                render_results(results, "", None, chars=300)
+        history.append({
+            "q": question, "answer": answer, "results": results, "filter": flt,
+            "strategy": strategy, "top_k": top_k, "n_cand": count_candidates(store, flt),
+        })
+
+
+# ============================================================================
+# Tab 3 — Truy vấn tự do
 # ============================================================================
 with tab_query:
     presets = {f"{k}: {q['q']}": q for k, q in Q.items()}
-    choice = st.selectbox("Chọn benchmark query hoặc tự gõ", ["(tự gõ)"] + list(presets))
+    choice = st.selectbox("Benchmark query hoặc tự gõ", ["(tự gõ)"] + list(presets))
     preset = presets.get(choice)
     question = st.text_input("Câu hỏi", value=preset["q"] if preset else "")
     flt_free = filter_builder(store, key=f"free_{choice}", default=preset["filter"] if preset else None)
     must = preset["must_contain"] if preset else ""
     gold = preset["gold_doc"] if preset else None
     if preset:
-        st.caption(f"gold_doc = `{gold}` · must_contain = `{must}`")
+        question_block(preset["q"], gold, must, preset["filter"])
 
     if st.button("Chạy truy vấn", type="primary", disabled=not question.strip()):
         flt = flt_free
@@ -567,25 +724,21 @@ with tab_query:
         if flt:
             c_a, c_b = st.columns(2)
             with c_a:
-                st.subheader(f"Có filter `{flt}`")
+                col_title(f"Có filter {flt}", f"{count_candidates(store, flt)} ứng viên")
                 if preset:
-                    sc, why = bench.grade(filtered, gold, must)
-                    st.markdown(f"**Điểm: {sc}/2** — {why}")
+                    score_block(*bench.grade(filtered, gold, must))
                 render_results(filtered, must, gold)
             with c_b:
-                st.subheader("Không filter (A/B)")
                 plain = store.search(question, top_k=top_k)
+                col_title("Không filter (A/B)", f"{len(store._store)} ứng viên")
                 if preset:
-                    sc, why = bench.grade(plain, gold, must)
-                    st.markdown(f"**Điểm: {sc}/2** — {why}")
+                    score_block(*bench.grade(plain, gold, must))
                 render_results(plain, must, gold)
         else:
             if preset:
-                sc, why = bench.grade(filtered, gold, must)
-                st.markdown(f"**Điểm: {sc}/2** — {why}")
+                score_block(*bench.grade(filtered, gold, must))
             render_results(filtered, must, gold)
 
-        st.subheader("🤖 Agent answer")
         ans = agent_answer(store, llm, question, filtered)
         show_answer(ans, filtered, must)
         if filtered:
@@ -594,7 +747,7 @@ with tab_query:
 
 
 # ============================================================================
-# Tab 3 — Xem chunk
+# Tab 4 — Chunk: bản đồ vị trí, overlap, heading gắn lại
 # ============================================================================
 def _overlap_len(prev: str, cur: str) -> int:
     """Số ký tự đầu của `cur` trùng với đuôi của `prev` (overlap thật giữa 2 chunk liền kề)."""
@@ -620,33 +773,34 @@ def _locate(body: str, chunk: str) -> tuple[int, int]:
 
 def _render_chunk_html(text: str, overlap_n: int, heading_repeat: str | None, hl: str) -> str:
     """Tô vàng phần overlap với chunk trước, xanh heading gắn lại, đỏ chuỗi tìm kiếm."""
-    def esc(t: str) -> str:
+    def e(t: str) -> str:
         return _html.escape(t).replace("\n", "<br>")
 
     parts = []
     pos = 0
     if heading_repeat and text.startswith(heading_repeat):
-        parts.append(f'<span style="background:#cde8ff;border-radius:3px">{esc(heading_repeat)}</span>')
+        parts.append(f'<span style="background:#dbeafe;border-radius:3px">{e(heading_repeat)}</span>')
         pos = len(heading_repeat)
     if overlap_n > pos:
-        parts.append(f'<span style="background:#ffe08a;border-radius:3px">{esc(text[pos:overlap_n])}</span>')
+        parts.append(f'<span style="background:#fde68a;border-radius:3px">{e(text[pos:overlap_n])}</span>')
         pos = overlap_n
-    parts.append(esc(text[pos:]))
+    parts.append(e(text[pos:]))
     out = "".join(parts)
     if hl:
-        out = re.sub(re.escape(_html.escape(hl)), lambda m: f'<mark style="background:#ffb3b3">{m.group(0)}</mark>', out, flags=re.IGNORECASE)
-    return f'<div style="font-family:monospace;font-size:0.85em;white-space:pre-wrap;line-height:1.45">{out}</div>'
+        out = re.sub(re.escape(_html.escape(hl)), lambda m: f'<mark style="background:#fecaca">{m.group(0)}</mark>', out, flags=re.IGNORECASE)
+    return f'<div class="sx-body">{out}</div>'
 
 
 with tab_chunks:
-    doc_pick = st.selectbox("Tài liệu", sorted(per_doc))
+    c1, c2 = st.columns([2, 3])
+    doc_pick = c1.selectbox("Tài liệu", sorted(per_doc))
+    hl = c2.text_input("Tô đỏ chuỗi", value="", placeholder="ví dụ: 2 giờ mỗi buổi / 2 hours per session")
     chunks = [r for r in store._store if r["metadata"]["doc_id"] == doc_pick]
     body_path = bench.CORPUS_DIR / f"{doc_pick}.md"
     _, body = bench.parse_front_matter(body_path.read_text(encoding="utf-8")) if body_path.exists() else ({}, "")
     n = len(chunks)
     avg = sum(len(c["content"]) for c in chunks) / max(1, n)
 
-    # --- overlap giữa các chunk liền kề + heading lặp lại
     overlaps = [0]
     head_rep: list[str | None] = [None]
     for i in range(1, n):
@@ -659,18 +813,15 @@ with tab_chunks:
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Số chunk", n)
-    m2.metric("Độ dài TB", f"{avg:.0f} ký tự")
-    m3.metric("Ký tự overlap (tổng)", total_ov, help="Phần đầu chunk i trùng với phần đuôi chunk i−1")
+    m2.metric("Độ dài trung bình", f"{avg:.0f}")
+    m3.metric("Ký tự overlap", total_ov, help="Phần đầu chunk i trùng với phần đuôi chunk i−1, đo bằng so khớp chuỗi")
     m4.metric("Heading gắn lại", n_head, help="Chunk bắt đầu bằng đúng tiêu đề của chunk trước (HeadingChunker)")
-    st.caption(f"Chiến lược: **{strategy}** · văn bản gốc {len(body)} ký tự · tổng ký tự trong chunk {sum(len(c['content']) for c in chunks)} "
-               f"(= gốc + overlap + heading lặp)")
+    st.caption(f"{strategy} · văn bản gốc {len(body)} ký tự · tổng ký tự trong chunk {sum(len(c['content']) for c in chunks)} (= gốc + overlap + heading lặp)")
 
-    # --- bản đồ vị trí chunk trên văn bản gốc
     if body:
-        st.markdown("**Bản đồ vị trí chunk trên văn bản gốc** — mỗi thanh là một chunk; chỗ hai thanh chồng lên nhau là overlap (đậm hơn).")
         L = max(1, len(body))
         bars = []
-        colors = ["#4c78a8", "#f58518", "#54a24b", "#e45756", "#72b7b2", "#b279a2"]
+        colors = ["#3b82f6", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#14b8a6"]
         for i, r in enumerate(chunks):
             a, b = _locate(body, r["content"])
             if a < 0:
@@ -679,110 +830,32 @@ with tab_chunks:
             top = 0 if i % 2 == 0 else 14
             bars.append(
                 f'<div title="chunk {i}: {a}–{b} ({b-a} ký tự)" style="position:absolute;left:{left:.2f}%;width:{width:.2f}%;top:{top}px;height:12px;'
-                f'background:{colors[i % len(colors)]};opacity:0.75;border-radius:2px"></div>'
+                f'background:{colors[i % len(colors)]};opacity:.7;border-radius:2px"></div>'
             )
-        st.markdown(
-            f'<div style="position:relative;height:30px;background:#f0f0f0;border-radius:4px;margin:4px 0 12px 0">{"".join(bars)}</div>',
-            unsafe_allow_html=True,
-        )
+        html('<div class="sx-note">Bản đồ vị trí chunk trên văn bản gốc — mỗi thanh một chunk, xếp so le; chỗ hai thanh chồng mép là overlap.</div>'
+             f'<div style="position:relative;height:30px;background:#f3f4f6;border-radius:6px;margin:2px 0 12px 0">{"".join(bars)}</div>')
 
-    hl = st.text_input("Tô đỏ chuỗi (ví dụ: 2 giờ mỗi buổi / 2 hours per session)", value="")
-    st.markdown(
-        '<span style="background:#ffe08a;padding:0 4px;border-radius:3px">vàng = overlap với chunk trước</span> &nbsp; '
-        '<span style="background:#cde8ff;padding:0 4px;border-radius:3px">xanh = heading gắn lại</span> &nbsp; '
-        '<span style="background:#ffb3b3;padding:0 4px;border-radius:3px">đỏ = chuỗi tìm</span>',
-        unsafe_allow_html=True,
-    )
+    html('<div class="sx-legend"><span style="background:#fde68a">overlap với chunk trước</span>'
+         '<span style="background:#dbeafe">heading gắn lại</span><span style="background:#fecaca">chuỗi tìm</span></div>')
     for i, r in enumerate(chunks):
         found = bool(hl) and hl.lower() in r["content"].lower()
-        tag = " ✅" if found else ""
-        ov = f" · overlap {overlaps[i]}" if overlaps[i] else ""
-        hd = " · heading lặp" if head_rep[i] else ""
-        with st.expander(f"chunk {r['metadata']['chunk_index']} · {len(r['content'])} ký tự{ov}{hd} · {r['content'][:55].replace(chr(10), ' ')}…{tag}", expanded=found):
-            st.markdown(_render_chunk_html(r["content"], overlaps[i], head_rep[i], hl), unsafe_allow_html=True)
+        bits = [f"chunk {r['metadata']['chunk_index']}", f"{len(r['content'])} ký tự"]
+        if overlaps[i]:
+            bits.append(f"overlap {overlaps[i]}")
+        if head_rep[i]:
+            bits.append("heading lặp")
+        if found:
+            bits.append("✓ chứa chuỗi")
+        preview = r["content"][:60].replace("\n", " ")
+        with st.expander(" · ".join(bits) + f" — {preview}…", expanded=found):
+            html(_render_chunk_html(r["content"], overlaps[i], head_rep[i], hl))
 
 
 # ============================================================================
-# Tab — Chatbot: hỏi đáp tự do trên corpus, mỗi lượt = 1 vòng RAG đầy đủ
-# ============================================================================
-SUGGESTED = [
-    "Sinh viên được mượn bao nhiêu sách và trong bao lâu?",
-    "Giảng viên mượn giáo trình được tối đa bao lâu?",
-    "Trả sách muộn bị phạt bao nhiêu?",
-    "Thư viện mở cửa mấy giờ vào cuối tuần?",
-    "Mượn laptop của thư viện được bao lâu?",
-    "Đặt phòng học nhóm bằng cách nào?",
-    "Làm mất sách thì phải làm gì?",
-    "Có được mang tài liệu tham khảo về nhà không?",
-]
-
-
-def _pick_filter_from_question(question: str) -> dict | None:
-    """Gợi ý filter đơn giản từ từ khoá trong câu hỏi (chỉ để demo, người dùng có thể tắt)."""
-    q = question.lower()
-    if any(w in q for w in ["giảng viên", "faculty", "cao học", "sau đại học", "graduate"]):
-        return {"audience": "faculty"}
-    if any(w in q for w in ["sinh viên", "student", "undergraduate"]):
-        return {"audience": "student"}
-    return None
-
-
-with tab_chat:
-    st.markdown(
-        "Hỏi bất kỳ điều gì về thư viện VinUni. Mỗi lượt là một vòng **RAG đầy đủ**: embed câu hỏi → lọc metadata (nếu có) → "
-        "top-k chunk → prompt có trích dẫn → LLM. Mở *Nguồn trích dẫn* dưới mỗi câu trả lời để truy vết."
-    )
-    cc1, cc2, cc3 = st.columns([2, 2, 1])
-    auto_filter = cc1.toggle("Tự gợi ý filter `audience` từ câu hỏi (bật để thấy filter làm mất recall)", value=False, key="chat_auto")
-    chat_filter = None
-    with cc2:
-        manual = st.checkbox("Đặt filter thủ công", value=False, key="chat_manual")
-    if cc3.button("🗑️ Xoá hội thoại", key="chat_clear"):
-        st.session_state["chat_history"] = []
-        st.rerun()
-    if manual:
-        chat_filter = filter_builder(store, key="chat")
-
-    with st.expander("💡 Câu hỏi gợi ý"):
-        cols = st.columns(2)
-        for i, sq in enumerate(SUGGESTED):
-            if cols[i % 2].button(sq, key=f"sug_{i}", width="stretch"):
-                st.session_state["chat_pending"] = sq
-
-    history: list[dict] = st.session_state.setdefault("chat_history", [])
-    for turn in history:
-        with st.chat_message("user"):
-            st.write(turn["q"])
-        with st.chat_message("assistant"):
-            st.caption(f"chiến lược `{turn['strategy']}` · filter `{turn['filter']}` · {turn['n_cand']} ứng viên · top-{turn['top_k']}")
-            show_answer(turn["answer"], turn["results"], "", compact=True)
-
-    pending = st.session_state.pop("chat_pending", None)
-    typed = st.chat_input("Nhập câu hỏi…", key="chat_input")
-    question = typed or pending
-    if question:
-        flt = chat_filter if manual else (_pick_filter_from_question(question) if auto_filter else None)
-        with st.chat_message("user"):
-            st.write(question)
-        with st.chat_message("assistant"):
-            with st.spinner("Đang truy xuất + hỏi LLM…"):
-                results = store.search_with_filter(question, top_k=top_k, metadata_filter=flt)
-                answer = agent_answer(store, llm, question, results)
-            st.caption(f"chiến lược `{strategy}` · filter `{flt}` · {count_candidates(store, flt)} ứng viên · top-{top_k}")
-            show_answer(answer, results, "", compact=True)
-            with st.expander(f"🔎 Top-{top_k} chunk đã dùng"):
-                render_results(results, "", None, chars=300)
-        history.append({
-            "q": question, "answer": answer, "results": results, "filter": flt,
-            "strategy": strategy, "top_k": top_k, "n_cand": count_candidates(store, flt),
-        })
-
-
-# ============================================================================
-# Tab 4 — Ghi chú: data, pipeline, chunking, chấm điểm
+# Tab 5 — Ghi chú kỹ thuật: data, pipeline, chunking, chấm điểm
 # ============================================================================
 with tab_notes:
-    st.markdown("## Đường đi của một câu hỏi")
+    st.markdown("#### Đường đi của một câu hỏi")
     st.code(
         "File .md ──► Chunker.chunk() ──► Document(id='file#i', content, metadata)\n"
         "                                        │  (metadata của file sao vào MỌI chunk)\n"
@@ -795,7 +868,7 @@ with tab_notes:
         language="text",
     )
 
-    n1, n2, n3 = st.tabs(["📁 Data", "🔪 Chunking", "🎯 Embedding · Search · Chấm"])
+    n1, n2, n3 = st.tabs(["Dữ liệu", "Chunking", "Embedding · Search · Chấm điểm"])
 
     with n1:
         st.markdown(
