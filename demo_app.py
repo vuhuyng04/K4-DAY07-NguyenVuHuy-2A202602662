@@ -87,7 +87,14 @@ def grade_doc_level(results: list[dict], gold_doc) -> int:
     return 2 if ranks[0] == 1 else 1
 
 
-def render_results(results: list[dict], must_contain: str = "", gold=None, chars: int = 600) -> None:
+def _contains(content: str, must_contain) -> bool:
+    """must_contain: str hoặc list[str] (EN + VI) — khớp bất kỳ."""
+    needles = [must_contain] if isinstance(must_contain, str) else list(must_contain or [])
+    c = content.lower()
+    return any(n and n.lower() in c for n in needles)
+
+
+def render_results(results: list[dict], must_contain="", gold=None, chars: int = 600) -> None:
     if not results:
         st.info("Không có kết quả (filter loại hết ứng viên?)")
         return
@@ -95,7 +102,7 @@ def render_results(results: list[dict], must_contain: str = "", gold=None, chars
     top = max(r["score"] for r in results) or 1.0
     for i, r in enumerate(results, 1):
         meta = r["metadata"]
-        hit = bool(must_contain) and must_contain.lower() in r["content"].lower()
+        hit = _contains(r["content"], must_contain)
         is_gold = meta.get("doc_id") in golds
         tags = []
         if is_gold:
@@ -167,7 +174,7 @@ def agent_answer(store: EmbeddingStore, llm, question: str, results: list[dict])
 _CITE = re.compile(r"\[(\d+)\]")
 
 
-def show_answer(answer: str, results: list[dict], must_contain: str = "", compact: bool = False) -> None:
+def show_answer(answer: str, results: list[dict], must_contain="", compact: bool = False) -> None:
     """Hiện câu trả lời + bảng 'Nguồn trích dẫn' nối [n] → chunk → doc_id → source_url."""
     st.success(answer)
     cited = sorted({int(n) for n in _CITE.findall(answer) if 1 <= int(n) <= len(results)})
@@ -181,7 +188,7 @@ def show_answer(answer: str, results: list[dict], must_contain: str = "", compac
         for n in cited:
             r = results[n - 1]
             meta = r["metadata"]
-            hit = bool(must_contain) and must_contain.lower() in r["content"].lower()
+            hit = _contains(r["content"], must_contain)
             url = meta.get("source_url")
             link = f"[{meta.get('doc_id')}]({url})" if url else f"`{meta.get('doc_id')}`"
             st.markdown(
@@ -250,9 +257,10 @@ SCENARIOS = {
     "1 · Metadata filter — 5 phần: 3 đối tượng · trường bất kỳ · lọc trước/sau · mất recall · lọc sai trường": "filter",
     "2 · So sánh chiến lược chunking — Q4 (bullet bị tách, ai giữ được khối?)": "chunking",
     "3 · Nguồn chính thức mâu thuẫn — Q2 (FAQ 20.000 vs faculty 10.000 VND)": "conflict",
-    "4 · Failure case cross-lingual — Q3 (cả 3 chiến lược 0đ)": "failure",
+    "4 · Cross-lingual trước/sau — Q3 chỉ corpus EN (0đ) vs có bản VI (2đ)": "failure",
     "5 · Chấm hai mức — doc_id vs chunk chứa đáp án (kết quả bị thổi phồng)": "twolevel",
     "6 · Bảng tổng hợp 3 chiến lược × 5 query": "summary",
+    "7 · Ngôn ngữ — cùng câu hỏi VI/EN, cùng ngôn ngữ thắng tuyệt đối": "language",
 }
 
 with tab_demo:
@@ -395,10 +403,10 @@ with tab_demo:
                     st.caption(why)
                     render_results(res, q["must_contain"], q["gold_doc"], chars=350)
             st.info(
-                "**Điểm nhấn:** Recursive cắt ở `\\n\\n` rồi `\\n` nên danh sách bullet bị tách từng dòng; ranh giới chunk rơi giữa "
-                "bullet *2 hours per session…* và bullet *Study rooms are for group study only…*. Chunk sau có từ vựng gần câu hỏi hơn "
-                "(group, session) nên lọt top-1, chunk có số liệu rớt. Không overlap = mỗi thông tin chỉ có một cơ hội. "
-                "FixedSize dùng overlap 50 để bullet xuất hiện ở 2 chunk; Heading giữ cả khối bullet dưới `## Study rooms`."
+                "**Điểm nhấn:** Đáp án là **một bullet** trong danh sách quy định phòng học. Recursive cắt ở `\\n\\n` rồi `\\n` nên bullet "
+                "bị tách từng dòng; FixedSize cắt mù 500 ký tự — cả hai đều để chunk *'Phải có ít nhất 2 người…'* (từ vựng gần câu hỏi: nhóm, buổi) "
+                "lên top-1, còn bullet *'2 giờ mỗi buổi, 4 buổi mỗi tuần'* rớt xuống hạng 3. Heading giữ **cả khối bullet** dưới `## Phòng học nhóm` "
+                "nên top-1 chứa đáp án → 2/2. Thứ quyết định không phải chunker 'thông minh' mà là *khối thông tin có bị tách khỏi ngữ cảnh gần nó không*."
             )
 
     # ---------------------------------------------------------------- 3
@@ -429,27 +437,37 @@ with tab_demo:
     # ---------------------------------------------------------------- 4
     elif kind == "failure":
         q = Q["Q3"]
-        st.markdown(f"**Câu hỏi:** {q['q']}  \n**Gold:** `{q['gold_doc']}` · must_contain=`{q['must_contain']}`")
+        st.markdown(
+            f"**Câu hỏi:** {q['q']}  \n**Đáp án:** *overdue for more than 05 days* / *quá hạn hơn 05 ngày* — có trong `equipment-loans` (EN) và `equipment-loans-vi` (VI)."
+        )
+        st.markdown("Trước khi dịch, corpus chỉ có tiếng Anh và Q3 **0đ ở cả 3 chiến lược**. Tái hiện bằng filter `language=en`, rồi so với corpus song ngữ.")
+        strat = st.selectbox("Chiến lược", MAIN3, key="s4")
         if run:
-            cols = st.columns(3)
-            for col, name in zip(cols, MAIN3):
-                with col:
-                    s_store, _, _ = build_store(name, fp)
-                    res, sc, why = run_query(s_store, q, top_k)
-                    st.subheader(name.split(" — ")[0])
-                    st.markdown(f"### {sc}/2")
-                    st.caption(why)
-                    render_results(res, q["must_contain"], q["gold_doc"], chars=300)
-            st.markdown("**Chunk lẽ ra phải được lấy** (trong `equipment-loans`):")
-            s_store, _, _ = build_store(MAIN3[0], fp)
-            target = [r for r in s_store._store if r["metadata"]["doc_id"] == "equipment-loans" and "05 days" in r["content"]]
-            if target:
-                st.code(target[0]["content"][:500])
+            s_store, _, _ = build_store(strat, fp)
+            c1, c2 = st.columns(2)
+            with c1:
+                st.subheader("🇬🇧 Chỉ corpus EN (`language=en`) — như trước khi dịch")
+                res = s_store.search_with_filter(q["q"], top_k=top_k, metadata_filter={"language": "en"})
+                sc, why = bench.grade(res, q["gold_doc"], q["must_contain"])
+                st.markdown(f"### {sc}/2")
+                st.caption(why)
+                render_results(res, q["must_contain"], q["gold_doc"], chars=280)
+                st.markdown("**🤖 Agent:**")
+                show_answer(agent_answer(s_store, llm, q["q"], res), res, q["must_contain"], compact=True)
+            with c2:
+                st.subheader("🇻🇳🇬🇧 Corpus song ngữ (không filter)")
+                res2 = s_store.search_with_filter(q["q"], top_k=top_k, metadata_filter=None)
+                sc2, why2 = bench.grade(res2, q["gold_doc"], q["must_contain"])
+                st.markdown(f"### {sc2}/2")
+                st.caption(why2)
+                render_results(res2, q["must_contain"], q["gold_doc"], chars=280)
+                st.markdown("**🤖 Agent:**")
+                show_answer(agent_answer(s_store, llm, q["q"], res2), res2, q["must_contain"], compact=True)
             st.info(
-                "**Điểm nhấn:** Cả ba chiến lược đều 0đ → lỗi không nằm ở chunker. Query tiếng Việt *'quá hạn bao nhiêu ngày thì bị coi là mất'* "
-                "so với corpus tiếng Anh *'overdue for more than 05 days will be considered lost'* — chunk *'fined for returning items late… damaged or lost'* "
-                "của trang faculty gần nghĩa hơn về chủ đề. Cách sửa: viết lại query sát từ vựng nguồn, hoặc tách `equipment-loans` "
-                "thành chunk nhỏ hơn có câu chứa số liệu đứng đầu."
+                "**Điểm nhấn:** Câu hỏi tiếng Việt *'quá hạn bao nhiêu ngày thì bị coi là mất'* trên corpus tiếng Anh: chunk *'fined for returning "
+                "items late… damaged or lost'* của trang faculty gần nghĩa hơn chunk *'overdue for more than 05 days'* — score chỉ ~0.3, "
+                "chunk có đáp án không lọt top-3. Thêm bản dịch VI: score nhảy lên ~0.7, top-1 chứa đáp án ngay. "
+                "Lỗi này **không nằm ở chunker** (cả 3 chiến lược cùng 0đ trước đó) mà ở khoảng cách ngôn ngữ giữa query và corpus."
             )
 
     # ---------------------------------------------------------------- 5
@@ -470,7 +488,7 @@ with tab_demo:
             st.dataframe(df, width="stretch", hide_index=True)
             st.info(
                 "**Điểm nhấn:** Chỉ kiểm `doc_id` gold có trong top-3 sẽ thổi phồng kết quả — một chiến lược có thể lấy trọn 3 slot "
-                "từ đúng file mà không chunk nào chứa câu trả lời (Q1, Q5: cả 3 chunk đúng file, chunk có số liệu ở hạng 2–3). "
+                "từ đúng file mà không chunk nào chứa câu trả lời (Q1, Q4, Q5: top-3 toàn đúng file, chunk có số liệu ở hạng 2–3). "
                 "`docs/SCORING.md` yêu cầu *top-3 có chunk liên quan **và** agent trả lời đúng*, nên phải chấm ở mức nội dung."
             )
 
@@ -485,11 +503,48 @@ with tab_demo:
                 for key, q in Q.items():
                     st.markdown(f"**{key}.** {q['q']}  \n gold=`{q['gold_doc']}` · must_contain=`{q['must_contain']}` · filter=`{q['filter']}`")
             st.info(
-                "**Điểm nhấn:** Cùng 8 file, cùng 5 câu, chỉ đổi một dòng chunker mà điểm dao động 4–7/10. Thứ quyết định là "
-                "**khối thông tin có bị tách khỏi ngữ cảnh gần nó không**: overlap (Fixed) hoặc ranh giới người soạn (Heading) giữ được, "
-                "Recursive không overlap thì không. Q3 thua ở cả ba → giới hạn ở query/corpus."
+                "**Điểm nhấn:** Cùng 16 file (8 EN + 8 VI), cùng 5 câu, chỉ đổi một dòng chunker mà điểm dao động 7–9/10. "
+                "Heading thắng vì giữ trọn khối bullet/mục quy định dưới tiêu đề (Q1, Q4 top-1). Trước khi có bản VI, điểm là 4/7/7 và Q3 "
+                "0đ ở cả ba — thêm dữ liệu cùng ngôn ngữ với query nâng mọi chiến lược lên, nhiều hơn bất kỳ thay đổi chunker nào."
             )
 
+
+    # ---------------------------------------------------------------- 7
+    elif kind == "language":
+        st.markdown(
+            "Corpus có **8 trang × 2 ngôn ngữ** (bản EN gốc + bản VI dịch, cùng `source_url`, `translated_from` trỏ về nhau). "
+            "Hỏi cùng một câu bằng hai thứ tiếng, có/không ép `language` để thấy embedding ưu tiên ngôn ngữ đến mức nào."
+        )
+        strat = st.selectbox("Chiến lược", MAIN3, key="s7")
+        q_vi = st.text_input("Câu hỏi tiếng Việt", value=Q["Q1"]["q"], key="s7_vi")
+        q_en = st.text_input("Câu hỏi tiếng Anh", value="How many books can I borrow and for how long?", key="s7_en")
+        base = {"audience": "student"}
+        if run:
+            s_store, _, _ = build_store(strat, fp)
+            cells = [
+                ("🇻🇳 hỏi VI · không ép ngôn ngữ", q_vi, dict(base)),
+                ("🇻🇳 hỏi VI · ép `language=en`", q_vi, {**base, "language": "en"}),
+                ("🇬🇧 hỏi EN · không ép ngôn ngữ", q_en, dict(base)),
+                ("🇬🇧 hỏi EN · ép `language=vi`", q_en, {**base, "language": "vi"}),
+            ]
+            rows = []
+            r1, r2 = st.columns(2), st.columns(2)
+            for col, (label, qq, flt) in zip(list(r1) + list(r2), cells):
+                with col:
+                    st.subheader(label)
+                    res = s_store.search_with_filter(qq, top_k=top_k, metadata_filter=flt)
+                    langs = [r["metadata"].get("language") for r in res]
+                    top = res[0]["score"] if res else 0.0
+                    st.caption(f"ứng viên: {count_candidates(s_store, flt)} · top-1 score **{top:.3f}** · ngôn ngữ top-{top_k}: `{langs}`")
+                    render_results(res, "", None, chars=200)
+                    rows.append({"Trường hợp": label, "ứng viên": count_candidates(s_store, flt), "top-1 score": round(top, 3), "ngôn ngữ top-k": ",".join(langs)})
+            st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+            st.info(
+                "**Điểm nhấn:** Không ép ngôn ngữ, top-3 **luôn cùng ngôn ngữ với câu hỏi** (VI → toàn chunk VI, EN → toàn chunk EN) với score ~0.6–0.7; "
+                "ép sang ngôn ngữ kia score rớt còn ~0.25–0.4 nhưng vẫn tìm đúng trang → cross-lingual *có* hoạt động, chỉ yếu hơn nhiều. "
+                "Hệ quả: trong corpus song ngữ, bản dịch là thứ quyết định chất lượng retrieval cho người dùng tiếng Việt; "
+                "`language` là trường lọc thật (không phải để cho có) khi muốn agent trích dẫn đúng bản gốc."
+            )
 
 # ============================================================================
 # Tab 2 — Truy vấn tự do
@@ -573,7 +628,7 @@ with tab_notes:
     with n1:
         st.markdown(
             f"""
-**Corpus:** `{bench.CORPUS_DIR.name}` — {len(per_doc)} trang công khai của `library.vinuni.edu.vn`, crawl 2026-09-19 bằng
+**Corpus:** `{bench.CORPUS_DIR.name}` — {len(per_doc)} file = 8 trang công khai của `library.vinuni.edu.vn` × 2 ngôn ngữ (EN gốc + VI dịch, `translated_from` trỏ về nhau), crawl 2026-09-19 bằng
 `scripts/fetch_public_pages.py` (kiểm `robots.txt`, chờ ≥1 s/request), sau đó **làm sạch tay**: bỏ menu/footer (~70 % output thô),
 chuyển bảng HTML → Markdown, giữ nguyên điều khoản + con số + mốc thời gian.
 
@@ -605,7 +660,7 @@ document_version: not-stated            # không bịa số hiệu khi trang kh�
 ---
 ```
 Đã loại 2 trang sau khi crawl: `how-to-borrow-return-renew` (chỉ tiêu đề video) và `borrowing-vingroup-community` (không số liệu, trùng nội dung).
-Corpus tiếng Anh (trang gốc chỉ có tiếng Anh); query tiếng Việt → kiểm cross-lingual retrieval.
+Trang gốc chỉ có tiếng Anh; nhóm dịch tay 8 bản VI (giữ nguyên mọi con số) để (1) query tiếng Việt có chunk cùng ngôn ngữ, (2) `language` thành trường lọc thật. Trước khi dịch, Q3 0đ ở cả 3 chiến lược.
 """
         )
 
@@ -656,11 +711,11 @@ Lọc *sau* top-k thì 3 slot có thể đã bị chunk sai chiếm hết → 0 
 
 | Cách chấm | Điều kiện 2đ | Recursive (Huy) |
 |---|---|---|
-| Theo `doc_id` (ngây thơ) | gold_doc ở top-1 | **8/10** |
-| Theo chunk (thật, dùng trong bench) | chunk vừa đúng file *vừa chứa* `must_contain` ở top-1; hạng 2–3 = 1đ | **4/10** |
+| Theo `doc_id` (ngây thơ) | gold_doc ở top-1 | **10/10** |
+| Theo chunk (thật, dùng trong bench) | chunk vừa đúng file *vừa chứa* `must_contain` ở top-1; hạng 2–3 = 1đ | **7/10** |
 
-Chênh 4 điểm = những lần lấy **đúng file nhưng sai mẩu**. `docs/SCORING.md` yêu cầu *top-3 có chunk liên quan **và** agent trả lời đúng* → phải chấm ở mức nội dung.
+Chênh 3 điểm = những lần lấy **đúng file nhưng sai mẩu**. `docs/SCORING.md` yêu cầu *top-3 có chunk liên quan **và** agent trả lời đúng* → phải chấm ở mức nội dung.
 
-**Ba con số cần nhớ:** `4 / 7 / 7` (Recursive / Fixed / Heading) · `0 → 2` (Q1 không / có filter) · `8 → 4` (chấm doc vs chấm chunk).
+**Ba con số cần nhớ:** `7 / 7 / 9` (Recursive / Fixed / Heading, corpus song ngữ; trước khi dịch là `4 / 7 / 7`) · `0 → 2` (Q1 không / có filter) · `0.25 → 0.6` (score khác / cùng ngôn ngữ).
 """
         )

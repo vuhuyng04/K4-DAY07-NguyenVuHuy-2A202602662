@@ -58,44 +58,47 @@ CHUNKER = RecursiveChunker(chunk_size=500)
 # 5 benchmark query của NHÓM (phải trùng với REPORT_NHOM.md).
 #   q            : câu hỏi
 #   gold_doc     : doc_id (tên file không .md) chứa gold answer — hoặc list nếu nhiều file cùng chứa
-#   must_contain : chuỗi đặc trưng phải xuất hiện trong ngữ cảnh truy xuất được
+#   must_contain : chuỗi (hoặc list chuỗi, vd EN + VI) đặc trưng phải xuất hiện trong ngữ cảnh truy xuất được
 #                  (dùng để chấm mức 2 — top-3 đúng file chưa đủ, phải có đáp án)
 #   filter       : metadata_filter hoặc None; ít nhất 1 câu cần {"audience": "student"}
 QUERIES: list[dict] = [
-    # Q1 — CẦN filter: không nêu người hỏi là ai; corpus có trang undergraduate (3 items/2 weeks)
+    # Corpus song ngữ: mỗi trang có bản EN (doc_id) và bản VI (doc_id-vi), cùng nội dung.
+    # gold_doc / must_contain nhận cả hai bản để chấm công bằng bất kể ngôn ngữ chunk được lấy.
+    # Q1 — CẦN filter audience: không nêu người hỏi là ai; trang undergraduate (3 items/2 weeks)
     #      và trang graduate/faculty (5 items/1 month) cùng từ vựng, khác đáp án.
     {
         "q": "Tôi được mượn tối đa bao nhiêu cuốn sách và trong bao lâu?",
-        "gold_doc": "borrowing-undergraduate-staff",
-        "must_contain": "3 items",
+        "gold_doc": ["borrowing-undergraduate-staff", "borrowing-undergraduate-staff-vi"],
+        "must_contain": ["3 items", "3 tài liệu"],
         "filter": {"audience": "student"},
     },
     # Q2 — tra số liệu
     {
         "q": "Mức phạt trả sách muộn là bao nhiêu tiền một ngày?",
-        "gold_doc": "library-faq",
-        "must_contain": "20,000 VND",
+        "gold_doc": ["library-faq", "library-faq-vi"],
+        "must_contain": ["20,000 VND", "20.000 VND"],
         "filter": None,
     },
-    # Q3 — hỏi điều kiện
+    # Q3 — hỏi điều kiện (trước đây cross-lingual fail ở cả 3 chiến lược)
     {
         "q": "Thiết bị mượn quá hạn bao nhiêu ngày thì bị coi là mất?",
-        "gold_doc": ["equipment-loans", "borrowing-undergraduate-staff"],
-        "must_contain": "05 days",
+        "gold_doc": ["equipment-loans", "equipment-loans-vi", "borrowing-undergraduate-staff", "borrowing-undergraduate-staff-vi"],
+        "must_contain": ["05 days", "05 ngày"],
         "filter": None,
     },
     # Q4 — hỏi quy trình / giới hạn
     {
         "q": "Một nhóm được đặt phòng học nhóm tối đa bao nhiêu giờ mỗi buổi và bao nhiêu buổi mỗi tuần?",
-        "gold_doc": ["room-booking", "borrowing-undergraduate-staff", "borrowing-graduate-faculty"],
-        "must_contain": "2 hours per session",
+        "gold_doc": ["room-booking", "room-booking-vi", "borrowing-undergraduate-staff", "borrowing-undergraduate-staff-vi",
+                     "borrowing-graduate-faculty", "borrowing-graduate-faculty-vi"],
+        "must_contain": ["2 hours per session", "2 giờ mỗi buổi"],
         "filter": None,
     },
     # Q5 — liệt kê / thời gian
     {
         "q": "Giờ mở cửa thư viện từ tháng 9 là khi nào?",
-        "gold_doc": "hours-and-access",
-        "must_contain": "8:45 am – 9:00 pm",
+        "gold_doc": ["hours-and-access", "hours-and-access-vi", "library-faq", "library-faq-vi"],
+        "must_contain": ["8:45 am – 9:00 pm", "8h45 – 21h00"],
         "filter": None,
     },
 ]
@@ -230,20 +233,20 @@ def make_llm_fn():
 # ============================================================================
 
 
-def grade(results: list[dict], gold_doc, must_contain: str) -> tuple[int, str]:
+def grade(results: list[dict], gold_doc, must_contain) -> tuple[int, str]:
     """Chấm 2 mức theo hạng của CHUNK vừa đúng doc vừa chứa đáp án.
 
     2đ: chunk đó ở top-1; 1đ: ở top-2/3; 0đ: gold_doc vắng hoặc không chunk nào chứa đáp án.
-    gold_doc có thể là str hoặc list[str] (khi cùng một quy định xuất hiện ở nhiều file).
+    gold_doc và must_contain có thể là str hoặc list[str] (nhiều file / nhiều ngôn ngữ cùng chứa đáp án).
     """
     golds = {gold_doc} if isinstance(gold_doc, str) else set(gold_doc)
     doc_ranks = [i for i, r in enumerate(results, 1) if r["metadata"].get("doc_id") in golds]
     if not doc_ranks:
         return 0, "gold_doc KHÔNG có trong top-k"
-    needle = must_contain.lower()
+    needles = [n.lower() for n in ([must_contain] if isinstance(must_contain, str) else must_contain) if n]
     hit_ranks = [
         i for i, r in enumerate(results, 1)
-        if r["metadata"].get("doc_id") in golds and (not needle or needle in r["content"].lower())
+        if r["metadata"].get("doc_id") in golds and (not needles or any(n in r["content"].lower() for n in needles))
     ]
     if not hit_ranks:
         return 0, f"gold_doc ở hạng {doc_ranks[0]} nhưng KHÔNG chunk nào chứa '{must_contain}'"

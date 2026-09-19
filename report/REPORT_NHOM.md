@@ -21,18 +21,19 @@
 
 ### Danh sách tài liệu (Data Inventory)
 
-Thư mục `data/thu-vien-vinuni/`, 8 file `.md` + `sources.csv`. Tất cả crawl ngày 2026-09-19 bằng `scripts/fetch_public_pages.py`, sau đó **làm sạch tay** (bỏ menu/footer ~2–3 KB mỗi trang, chuyển bảng HTML thành bảng Markdown, giữ nguyên điều khoản và số liệu). Corpus tiếng Anh vì trang gốc chỉ có tiếng Anh; query đặt bằng tiếng Việt để kiểm cross-lingual retrieval.
+Thư mục `data/thu-vien-vinuni/`: **8 trang nguồn × 2 ngôn ngữ = 16 file `.md`** + `sources.csv`. Bản EN crawl ngày 2026-09-19 bằng `scripts/fetch_public_pages.py`, **làm sạch tay** (bỏ menu/footer ~2–3 KB mỗi trang, chuyển bảng HTML thành bảng Markdown, giữ nguyên điều khoản và số liệu). Bản VI do nhóm **dịch tay từ bản EN đã làm sạch**, giữ nguyên mọi con số/mốc thời gian, cùng `source_url`, có `translated_from` trỏ về `doc_id` gốc và `license_or_permission = translation-of-public-source`. Lý do dịch: trang gốc chỉ có tiếng Anh, còn benchmark query tiếng Việt — trước khi dịch, Q3 0đ ở cả 3 chiến lược vì khoảng cách ngôn ngữ (xem mục 3). Về giới hạn 5–10 tài liệu của lab: corpus có **8 nguồn**; bản VI là bản dịch của cùng nguồn, không phải tài liệu mới.
 
 | # | Tên tài liệu (`doc_id`) | Nguồn (Source URL) | Ngày lấy / Phiên bản | Số ký tự | Metadata đã gán |
 |---|--------------|------------|--------------------|----------|-----------------|
-| 1 | `borrowing-undergraduate-staff` | library.vinuni.edu.vn/services/borrow-and-request/undergraduate-and-staff/ | 2026-09-19 / not-stated | 5 077 | audience=**student**, category=borrowing |
-| 2 | `borrowing-graduate-faculty` | library.vinuni.edu.vn/services/borrow-and-request/graduate-faculty-and-instructors/ | 2026-09-19 / not-stated | 5 554 | audience=**faculty**, category=borrowing |
-| 3 | `borrowing-privilege` | library.vinuni.edu.vn/borrowing-priviledge/ | 2026-09-19 / not-stated | 2 687 | audience=all, category=borrowing |
-| 4 | `equipment-loans` | library.vinuni.edu.vn/equipment-loans/ | 2026-09-19 / not-stated | 808 | audience=all, category=borrowing |
-| 5 | `fines-and-charges` | library.vinuni.edu.vn/fine-and-other-charges/ | 2026-09-19 / not-stated | 1 699 | audience=all, category=fees |
-| 6 | `hours-and-access` | library.vinuni.edu.vn/about-us/hours-and-access/ | 2026-09-19 / not-stated | 1 088 | audience=all, category=access |
-| 7 | `room-booking` | library.vinuni.edu.vn/room-booking/ | 2026-09-19 / not-stated | 3 652 | audience=all, category=spaces |
-| 8 | `library-faq` | library.vinuni.edu.vn/faq/ | 2026-09-19 / 2024 | 8 470 | audience=all, category=faq |
+| 1 | `borrowing-undergraduate-staff` | library.vinuni.edu.vn/services/borrow-and-request/undergraduate-and-staff/ | 2026-09-19 / not-stated | 5 077 | audience=**student**, category=borrowing, language=en |
+| 2 | `borrowing-graduate-faculty` | library.vinuni.edu.vn/services/borrow-and-request/graduate-faculty-and-instructors/ | 2026-09-19 / not-stated | 5 554 | audience=**faculty**, category=borrowing, language=en |
+| 3 | `borrowing-privilege` | library.vinuni.edu.vn/borrowing-priviledge/ | 2026-09-19 / not-stated | 2 687 | audience=all, category=borrowing, language=en |
+| 4 | `equipment-loans` | library.vinuni.edu.vn/equipment-loans/ | 2026-09-19 / not-stated | 808 | audience=all, category=borrowing, language=en |
+| 5 | `fines-and-charges` | library.vinuni.edu.vn/fine-and-other-charges/ | 2026-09-19 / not-stated | 1 699 | audience=all, category=fees, language=en |
+| 6 | `hours-and-access` | library.vinuni.edu.vn/about-us/hours-and-access/ | 2026-09-19 / not-stated | 1 088 | audience=all, category=access, language=en |
+| 7 | `room-booking` | library.vinuni.edu.vn/room-booking/ | 2026-09-19 / not-stated | 3 652 | audience=all, category=spaces, language=en |
+| 8 | `library-faq` | library.vinuni.edu.vn/faq/ | 2026-09-19 / 2024 | 8 470 | audience=all, category=faq, language=en |
+| 9–16 | `<doc_id>-vi` (8 file) | cùng URL với bản EN tương ứng | 2026-09-19 / như bản EN | ≈ bản EN | cùng audience/category, **language=vi**, translated_from=`<doc_id>` |
 
 Đã loại 2 trang sau khi crawl: `how-to-borrow-return-renew` (chỉ có tiêu đề video, không có nội dung text) và `borrowing-vingroup-community` (không có số liệu, lặp nội dung trang 1–2).
 
@@ -40,7 +41,7 @@ Thư mục `data/thu-vien-vinuni/`, 8 file `.md` + `sources.csv`. Tất cả cra
 - [x] Tập tài liệu (Corpus) chỉ chứa nguồn công khai/được phép dùng và không chứa dữ liệu cá nhân, thông tin đăng nhập hoặc tài liệu nội bộ. (Đã xoá địa chỉ email cá nhân/phòng ban khỏi FAQ khi làm sạch.)
 - [x] Mỗi tài liệu có `source_url`, `retrieved_at`, `document_version` (hoặc ngày hiệu lực) trong metadata. `document_version` ghi `not-stated` khi trang không nêu — không bịa số hiệu.
 
-Script kiểm tra CP2 (lab doc mục 3): 8/8 file `OK`, `sources.csv` khớp 1-1, `audience` = {student: 1, faculty: 1, all: 6}.
+Script kiểm tra CP2 (lab doc mục 3): 16/16 file `OK`, `sources.csv` khớp 1-1, `audience` = {student: 2, faculty: 2, all: 12}, `language` = {en: 8, vi: 8}.
 
 *Ghi chú kỹ thuật:* `scripts/fetch_public_pages.py` gốc đọc `robots.txt` bằng User-Agent mặc định `Python-urllib`, bị WAF của VinUni trả 403 → stdlib coi là "cấm toàn bộ" dù robots.txt thật cho phép. Nhóm sửa script để tải `robots.txt` bằng đúng UA khai báo (vẫn tôn trọng 401/403 thật).
 
@@ -52,7 +53,8 @@ Script kiểm tra CP2 (lab doc mục 3): 8/8 file `OK`, `sources.csv` khớp 1-1
 | `audience` | enum `student/faculty/staff/all` | `student` | Trường lọc chính: hai trang mượn sách cùng từ vựng nhưng khác hạn mức theo đối tượng |
 | `category` | enum `borrowing/fees/access/spaces/faq` | `fees` | Lọc theo loại câu hỏi (phạt tiền vs giờ mở cửa) khi corpus lớn hơn |
 | `department` | str | `library` | Chuẩn bị mở rộng sang phòng ban khác (học vụ, KTX) mà không lẫn |
-| `language` | str | `en` | Corpus tiếng Anh, query tiếng Việt — ghi rõ để giải thích score thấp |
+| `language` | enum `en/vi` | `vi` | Trường lọc thật: với query tiếng Việt, chunk VI luôn thắng chunk EN (score 0.6–0.7 vs 0.2–0.4); ép `language=en` để tái hiện corpus trước khi dịch hoặc để agent trích đúng bản gốc |
+| `translated_from` | str | `library-faq` | Nối bản dịch về bản gốc — truy vết và loại trùng khi cần |
 | `source_url`, `retrieved_at`, `document_version` | str | `…/faq/`, `2026-09-19`, `2024` | Truy vết và phân xử khi hai trang mâu thuẫn (xem Q2 mục 3) |
 
 ---
@@ -82,13 +84,13 @@ Script kiểm tra CP2 (lab doc mục 3): 8/8 file `OK`, `sources.csv` khớp 1-1
 **Thành viên 1 — Nguyễn Vũ Huy (R1)**
 - **Loại chiến lược:** `RecursiveChunker(chunk_size=500)`, separators mặc định `["\n\n", "\n", ". ", " ", ""]`
 - **Mô tả & lý do chọn cho chủ đề này:** Trang thư viện đã được viết theo đoạn và bullet; cắt ở ranh giới "to" (`\n\n`) trước rồi mới hạ xuống ranh giới nhỏ hơn sẽ giữ trọn từng mục FAQ, từng ghi chú — kỳ vọng tốt hơn FixedSize vốn cắt mù giữa câu. Không có overlap để xem thuần tuý ranh giới ngữ nghĩa có đủ hay không.
-- **Kết quả:** 81 chunks, **4/10** (Q1: 1, Q2: 2, Q3: 0, Q4: 0, Q5: 1). Thua ở Q4/Q5 vì separator `\n` tách rời từng bullet/từng dòng giờ mở cửa; không có overlap nên chunk chứa số liệu rớt khỏi top-1.
+- **Kết quả (corpus song ngữ, 152 chunks):** **7/10** (Q1: 1, Q2: 2, Q3: 2, Q4: 1, Q5: 1). Trước khi có bản VI: 81 chunks, 4/10 (Q3 0, Q4 0). Vẫn thua ở Q1/Q4/Q5 vì separator `\n` tách rời từng bullet; không có overlap nên chunk chứa số liệu ở hạng 2–3 thay vì top-1.
 
 **Thành viên 2 — Đào Ngọc Bình Thiên (R2)**
 - **Loại chiến lược:** `FixedSizeChunker(chunk_size=500, overlap=50)`
 - **Mô tả & lý do chọn:** Chọn làm đối chứng "không thông minh": cắt mù 500 ký tự, không quan tâm câu hay đoạn, nhưng có overlap 50 để mỗi ranh giới xuất hiện ở hai chunk. Với corpus quy định nhiều bullet ngắn và bảng, giả thuyết là overlap quan trọng hơn ranh giới ngữ nghĩa — số liệu nằm sát ranh giới vẫn có một chunk chứa trọn nó. `chunk_size=500` chọn bằng Recursive của Huy để so sánh công bằng.
 - **Code snippet:** không custom, dùng `FixedSizeChunker` có sẵn trong `src/chunking.py`.
-- **Kết quả chạy thử trên cùng cấu hình:** 68 chunks, **7/10** (1, 2, 0, 2, 2)
+- **Kết quả chạy thử trên cùng cấu hình:** 130 chunks, **7/10** (1, 1, 2, 1, 2); trước khi có bản VI: 68 chunks, 7/10 (1, 2, 0, 2, 2)
 
 **Thành viên 3 — Nguyễn Nguyên Phong (R3)**
 - **Loại chiến lược:** `HeadingChunker(chunk_size=800)` — custom, chunk theo tiêu đề `#`/`##`; section dài hơn 800 ký tự hạ xuống `RecursiveChunker` và **gắn lại heading vào từng mảnh con**
@@ -112,20 +114,20 @@ class HeadingChunker:
                     chunks.append(f"{heading}\n{piece}")
         return chunks
 ```
-- **Kết quả chạy thử trên cùng cấu hình:** 74 chunks, **7/10** (1, 2, 0, 2, 2)
+- **Kết quả chạy thử trên cùng cấu hình:** 145 chunks, **9/10** (2, 2, 2, 2, 1); trước khi có bản VI: 74 chunks, 7/10 (1, 2, 0, 2, 2)
 
 ### So Sánh Giữa Các Thành Viên
 
-Cùng corpus (8 file), cùng 5 query, cùng embedder `text-embedding-3-small`, cùng `top_k=3`, cùng cách chấm (chunk chứa đáp án ở top-1 = 2đ, top-2/3 = 1đ):
+Cùng corpus (16 file), cùng 5 query, cùng embedder `text-embedding-3-small`, cùng `top_k=3`, cùng cách chấm (chunk chứa đáp án ở top-1 = 2đ, top-2/3 = 1đ):
 
 | Thành viên | Chiến lược (Strategy) | Chunks | Điểm truy xuất (/10) | Điểm mạnh | Điểm yếu |
 |-----------|----------|---|----------------------|-----------|----------|
-| Huy | Recursive(500) | 81 | **4** | Giữ trọn từng mục FAQ (Q2 top-1) | Bullet list bị tách từng dòng; không overlap → Q4 0đ, Q5 chỉ 1đ |
-| Thiên | FixedSize(500, 50) | 68 | **7** | Overlap 50 cho mỗi ý 2 cơ hội lọt top-k (Q4, Q5 đều 2đ) | Cắt mù giữa câu/giữa hàng bảng; chunk khó đọc khi demo |
-| Phong | Heading(800) | 74 | **7** | Section trọn vẹn, heading lặp lại làm chunk tự mô tả (Q4, Q5 top-1) | Section dài (FAQ 22 mục, bảng 25 phòng) vẫn phải hạ xuống recursive |
+| Huy | Recursive(500) | 152 | **7** (trước: 4) | Giữ trọn từng mục FAQ (Q2 top-1, agent trả lời đúng 20.000) | Bullet list bị tách từng dòng; không overlap → Q1/Q4/Q5 chỉ 1đ |
+| Thiên | FixedSize(500, 50) | 130 | **7** (trước: 7) | Overlap 50 cho mỗi ý 2 cơ hội (Q5 top-1) | Cắt mù giữa mục → Q2 top-1 là chunk faculty, agent trả lời **10.000 VND** (sai nguồn) |
+| Phong | Heading(800) | 145 | **9** (trước: 7) | Section trọn vẹn + heading lặp lại → Q1, Q2, Q3, Q4 đều top-1 | Section dài vẫn phải hạ xuống recursive (Q5 chunk đáp án ở hạng 2) |
 
 **Chiến lược nào tốt nhất cho chủ đề này? Tại sao?**
-> Với corpus quy định thư viện, **HeadingChunker** và **FixedSize có overlap** cùng đạt 7/10, còn Recursive không overlap chỉ 4/10. Điểm khác biệt không nằm ở "thông minh" hơn mà ở việc **giữ được khối thông tin liền nhau**: quy định thư viện viết dạng bullet/bảng, mỗi bullet là một mệnh đề ngắn có từ vựng gần nhau ("session", "group", "room"); Recursive tách chúng rời rạc nên chunk *có từ khoá* thắng chunk *có số liệu*. Heading giữ cả khối bullet dưới một tiêu đề, FixedSize dùng overlap để mỗi bullet xuất hiện ở hai chunk. Heading nhỉnh hơn về chất lượng ngữ cảnh khi demo (chunk tự giải thích "đây là mục gì"), nên nhóm chọn Heading là chiến lược khuyến nghị cho văn bản quy định; FixedSize+overlap là baseline rất khó thua nếu chỉ đo top-k. Cả 3 đều 0đ ở Q3 → lỗi nằm ở query/corpus, không ở chunker (xem mục 3).
+> **HeadingChunker** thắng rõ trên corpus song ngữ: 9/10 so với 7/10 của hai chiến lược kia, và là chiến lược duy nhất đưa chunk có đáp án lên **top-1** ở 4/5 câu. Lý do không phải chunker "thông minh" hơn mà là **giữ được khối thông tin liền nhau**: quy định thư viện viết dạng bullet/bảng dưới tiêu đề, mỗi bullet là một mệnh đề ngắn có từ vựng gần nhau ("buổi", "nhóm", "phòng"); Recursive và Fixed đều để bullet *"phải có ít nhất 2 người"* thắng bullet *"2 giờ mỗi buổi"* ở Q4, còn Heading giữ cả khối dưới `## Phòng học nhóm`. Ở Q2, Heading còn cho agent thấy **cả hai con số mâu thuẫn** (20.000 FAQ và 10.000 trang faculty) trong cùng top-3 — đúng thứ người dùng cần biết. Hai điều đáng ghi hơn cả điểm số: (1) **thêm bản dịch VI nâng mọi chiến lược** (4/7/7 → 7/7/9) nhiều hơn bất kỳ thay đổi chunker nào — dữ liệu cùng ngôn ngữ với query là đòn bẩy lớn nhất; (2) Q3 từ 0đ ở cả ba lên 2đ ở cả ba chứng minh lỗi trước đó nằm ở khoảng cách ngôn ngữ, không ở chunking.
 
 ---
 
@@ -137,13 +139,13 @@ Cùng corpus (8 file), cùng 5 query, cùng embedder `text-embedding-3-small`, c
 
 | # | Câu hỏi (Query) | Câu trả lời chuẩn (Gold Answer) | Chunk nào chứa thông tin? |
 |---|-------|-------------------------------|--------------------------|
-| 1 | Tôi được mượn tối đa bao nhiêu cuốn sách và trong bao lâu? **(cần `metadata_filter={"audience": "student"}`)** | "Undergraduate students may borrow up to **3 items during two weeks** per item. Books may be renewed once for one week…" | `borrowing-undergraduate-staff` — mục *Borrowing privileges* |
-| 2 | Mức phạt trả sách muộn là bao nhiêu tiền một ngày? | "Normal material: **20,000 VND/day** overdue/document." | `library-faq` — mục 7 |
-| 3 | Thiết bị mượn quá hạn bao nhiêu ngày thì bị coi là mất? | "Equipment overdue for more than **05 days** will be considered lost, and the borrower will be charged for a replacement." | `equipment-loans` (và lặp trong `borrowing-undergraduate-staff` — mục *Equipment loans*) |
-| 4 | Một nhóm được đặt phòng học nhóm tối đa bao nhiêu giờ mỗi buổi và bao nhiêu buổi mỗi tuần? | "**2 hours per session, 2 sessions per day, 4 sessions per week**, all rooms combined." | `room-booking` (và lặp trong 2 trang borrowing — mục *Study rooms*) |
-| 5 | Giờ mở cửa thư viện từ tháng 9 là khi nào? | "Opening hours from September: Monday to Friday: **8:45 am – 9:00 pm**; Saturday and Sunday: 9:00 am – 5:00 pm." | `hours-and-access` — mục *Hours* |
+| 1 | Tôi được mượn tối đa bao nhiêu cuốn sách và trong bao lâu? **(cần `metadata_filter={"audience": "student"}`)** | "Undergraduate students may borrow up to **3 items during two weeks** per item…" / "Sinh viên đại học được mượn tối đa **3 tài liệu**, thời hạn hai tuần…" | `borrowing-undergraduate-staff` (+ `-vi`) — mục *Borrowing privileges* |
+| 2 | Mức phạt trả sách muộn là bao nhiêu tiền một ngày? | "Normal material: **20,000 VND/day** overdue/document." / "Tài liệu thông thường: **20.000 VND/ngày** quá hạn/tài liệu." | `library-faq` (+ `-vi`) — mục 7 |
+| 3 | Thiết bị mượn quá hạn bao nhiêu ngày thì bị coi là mất? | "Equipment overdue for more than **05 days** will be considered lost…" / "Thiết bị quá hạn hơn **05 ngày** sẽ bị coi là mất…" | `equipment-loans` (+ `-vi`); lặp trong `borrowing-undergraduate-staff` (+ `-vi`) |
+| 4 | Một nhóm được đặt phòng học nhóm tối đa bao nhiêu giờ mỗi buổi và bao nhiêu buổi mỗi tuần? | "**2 hours per session, 2 sessions per day, 4 sessions per week**" / "**2 giờ mỗi buổi**, 2 buổi mỗi ngày, 4 buổi mỗi tuần" | `room-booking` (+ `-vi`); lặp trong 2 trang borrowing (+ `-vi`) |
+| 5 | Giờ mở cửa thư viện từ tháng 9 là khi nào? | "Opening hours from September: Monday to Friday: **8:45 am – 9:00 pm**…" / "Thứ Hai đến Thứ Sáu: **8h45 – 21h00**…" | `hours-and-access` (+ `-vi`); FAQ mục 1 (+ `-vi`) |
 
-Dạng hỏi: Q1 điều kiện theo đối tượng, Q2 tra số liệu, Q3 ngưỡng/điều kiện, Q4 giới hạn (nhiều con số), Q5 thời gian. Q3/Q4 chấp nhận nhiều `gold_doc` vì cùng quy định xuất hiện ở nhiều trang chính thức.
+Dạng hỏi: Q1 điều kiện theo đối tượng, Q2 tra số liệu, Q3 ngưỡng/điều kiện, Q4 giới hạn (nhiều con số), Q5 thời gian. `gold_doc` và `must_contain` trong `bench.py` nhận **list** (bản EN + bản VI, và các trang lặp cùng quy định) để chấm công bằng bất kể chunk ngôn ngữ nào được lấy.
 
 ### Tổng hợp chất lượng truy xuất của nhóm
 
@@ -151,34 +153,35 @@ Dạng hỏi: Q1 điều kiện theo đối tượng, Q2 tra số liệu, Q3 ng�
 
 | # | Câu hỏi | Chiến lược tốt nhất cho câu này | Có chunk liên quan trong top-3? | Ghi chú |
 |---|---------|-------------------------------|-------------------------------|---------|
-| 1 | Mượn tối đa bao nhiêu / bao lâu (filter student) | Heading (hạng 2) ≥ Recursive, Fixed (hạng 3) | Có (cả 3, khi có filter) | **Không filter → 0/2 ở cả 3 chiến lược**; agent trả lời đúng "3 cuốn / 2 tuần [3]" |
-| 2 | Phạt trả muộn | Cả 3 (top-1) | Có | Agent (gpt-4o-mini) trả lời **10.000 VND** từ chunk [3] (trang faculty) thay vì 20.000 ở chunk [1] — hai trang chính thức mâu thuẫn |
-| 3 | Thiết bị quá hạn bao nhiêu ngày | Không chiến lược nào | **Không** (0/2 cả 3) | Chunk "fined for returning items late… lost" của trang faculty thắng chunk "overdue for more than 05 days"; cross-lingual + "05 days" |
-| 4 | Đặt phòng tối đa | Fixed, Heading (top-1) | Có với Fixed/Heading; **không** với Recursive | Recursive tách bullet "2 hours per session" khỏi bullet "at least 2 people" |
-| 5 | Giờ mở cửa tháng 9 | Fixed, Heading (top-1) | Có | Recursive đưa đoạn giờ **tháng 7–8** lên top-1 (cùng từ vựng), đoạn tháng 9 hạng 2 |
+| 1 | Mượn tối đa bao nhiêu / bao lâu (filter student) | Heading (top-1) > Recursive (hạng 2) > Fixed (hạng 3) | Có (cả 3, khi có filter) | **Không filter → 0/0/1**: top-3 là trang graduate/faculty-vi (5 tài liệu / 1 tháng) — cùng câu chữ, sai đối tượng |
+| 2 | Phạt trả muộn | Recursive, Heading (top-1) | Có | Fixed: top-1 là chunk trang faculty → agent trả lời **10.000 VND** (sai nguồn); Heading: agent nêu **cả hai** con số; Recursive: 20.000 (đúng). Hai trang chính thức mâu thuẫn |
+| 3 | Thiết bị quá hạn bao nhiêu ngày | Cả 3 (top-1) | Có | **Trước khi dịch: 0/2 ở cả 3** — chunk EN *'fined for returning items late… lost'* thắng *'overdue for more than 05 days'*. Có bản VI: score 0.71, top-1 ngay |
+| 4 | Đặt phòng tối đa | Heading (top-1) | Có | Recursive & Fixed: bullet *"ít nhất 2 người"* lên top-1, bullet *"2 giờ mỗi buổi"* hạng 3 |
+| 5 | Giờ mở cửa tháng 9 | Fixed (top-1) | Có | Recursive/Heading: chunk mở đầu file (giờ **tháng 7–8**) lên top-1, đoạn tháng 9 hạng 2 |
 
 **Lọc bằng metadata có giúp ích không? Ở câu hỏi nào?**
-> Giúp quyết định ở **Q1**: không filter, top-3 của cả ba chiến lược là chunk phạt tiền của FAQ và trang faculty (score 0.31–0.32), trang undergraduate không xuất hiện (0.23) → 0/2; có `audience=student`, toàn bộ top-3 về đúng trang và agent trả lời đúng. Similarity đo "cùng chủ đề mượn sách" chứ không đo "đúng đối tượng" — đúng như dự đoán cặp câu số 4 trong report cá nhân (0.863 cho hai câu khác đối tượng). Mặt trái: filter `audience=student` cứng sẽ **loại luôn** `borrowing-privilege` và `library-faq` (audience=all) — hai trang có bảng hạn mức đầy đủ nhất; nếu trang undergraduate thiếu thông tin thì filter làm mất recall. Với corpus này filter không hại ở câu nào khác vì chỉ Q1 dùng nó.
+> Giúp quyết định ở **Q1**: không filter, top-3 của cả ba chiến lược là chunk của `borrowing-graduate-faculty-vi` (score 0.62–0.66) — *"Học viên sau đại học được mượn tối đa 5 tài liệu"* — và agent sẽ trả lời sai đối tượng; có `audience=student`, top-3 về trang undergraduate-vi, agent trả lời đúng *3 tài liệu / 2 tuần*. Similarity đo "cùng chủ đề mượn sách" chứ không đo "đúng đối tượng" — đúng như dự đoán cặp câu số 4 trong report cá nhân (0.863 cho hai câu khác đối tượng). **`language`** cũng là filter thật: ép `language=en` với query tiếng Việt làm score rớt từ ~0.6 xuống ~0.25 và tái hiện đúng kết quả 0đ của Q3 trước khi dịch. Mặt trái (đo được, xem demo kịch bản 1D): filter `audience=faculty` cho câu *"Giảng viên được mượn tối đa bao lâu?"* **loại luôn** `borrowing-privilege` và FAQ (audience=all) — nơi duy nhất ghi *6 months* — nên agent chỉ còn *1 tháng* của graduate. Precision đổi bằng recall.
 
 ---
 
 ## 4. Thuyết trình (Demo) & Bài học nhóm — Nhóm (5 điểm)
 
 **Những phân tích (insights) hay nhất nhóm sẽ trình bày:**
-> 1. **Chấm hai mức lật kết quả**: chỉ kiểm `doc_id` gold trong top-3 thì Recursive được 8/10, kiểm chunk có chứa đáp án thì còn 4/10. Chunk đúng chủ đề nhưng không có số liệu thắng chunk có đáp án là lỗi phổ biến nhất của cả ba chiến lược.
-> 2. **A/B filter tại Q1**: 0/2 → 2/2 chỉ bằng một dòng `metadata_filter`; embedding không phân biệt được sinh viên và giảng viên khi hai trang dùng cùng câu chữ.
-> 3. **Nguồn chính thức tự mâu thuẫn**: FAQ nói 20.000 VND/ngày, trang faculty nói 10.000 VND/business day; agent chọn chunk [3]. `document_version` không phải trường hình thức — nhóm không có gì để phân xử vì cả hai `not-stated`.
+> 1. **Dữ liệu cùng ngôn ngữ > mọi thay đổi chunker**: dịch 8 trang sang tiếng Việt nâng điểm 4/7/7 → 7/7/9 và đưa Q3 từ 0đ (cả ba) lên 2đ (cả ba). Với query tiếng Việt, 18/18 chunk top-3 đều là bản VI, score 0.6–0.7 so với 0.2–0.4 của bản EN — embedding đa ngữ *có* hiểu chéo ngôn ngữ nhưng yếu hơn nhiều so với cùng ngôn ngữ.
+> 2. **A/B filter tại Q1**: 0 → 2 chỉ bằng một dòng `metadata_filter`; không filter, agent trả lời theo trang graduate/faculty (5 tài liệu) vì hai trang dùng cùng câu chữ.
+> 3. **Nguồn chính thức tự mâu thuẫn** (FAQ 20.000 vs faculty 10.000 VND/ngày) và ba chunker cho ba câu trả lời khác nhau ở Q2: Fixed cắt mù → agent trích chunk faculty → 10.000; Recursive giữ trọn mục FAQ → 20.000; Heading đưa cả hai vào top-3 → agent nêu cả hai. Chấm "top-3 có chunk liên quan" chưa đủ, phải đọc agent answer; `document_version` không phải trường hình thức.
+> 4. **Chấm hai mức**: theo `doc_id` Recursive được 10/10, theo chunk chứa đáp án còn 7/10 — cách chấm ngây thơ thổi phồng kết quả.
 
 **Công cụ demo:** `streamlit run demo_app.py` — tab *Kịch bản demo* có 6 tình huống chọn sẵn (A/B metadata filter, so sánh chunking ở Q4, nguồn mâu thuẫn Q2, failure case Q3, chấm hai mức, bảng tổng hợp), tab truy vấn tự do và tab xem chunk; nhập API key ngay trên sidebar. Cache embedding dùng chung với `bench.py` nên demo live không gọi API embedding.
 
 **Kịch bản demo 6–8 phút:**
-> 1' Huy — chủ đề, 8 file, vì sao thư viện VinUni (robots cho phép, 2 trang student/faculty). · 2' mỗi người 40" chiến lược + điểm. · 3' Huy chạy live `python bench.py` (cache → không tốn API), chỉ vào Q1 A/B và Q4 failure; Phong giải thích vì sao Heading thắng Q4/Q5; Thiên giải thích overlap. · 1' Thiên: mâu thuẫn 10k/20k VND và bài học `document_version`. · Q&A. Terminal mở sẵn, `ket_qua_benchmark.txt` của 3 người đã chạy trước.
+> 1' Huy — chủ đề, 8 trang × 2 ngôn ngữ, vì sao thư viện VinUni (robots cho phép, 2 trang student/faculty) và vì sao phải dịch. · 2' mỗi người 40" chiến lược + điểm (7/7/9). · 3' demo `streamlit run demo_app.py`: kịch bản 1 (A/B filter Q1), kịch bản 4 (Q3 chỉ EN 0đ → song ngữ 2đ), kịch bản 2 (Q4: Heading giữ khối bullet); Phong giải thích vì sao Heading thắng; Thiên giải thích overlap. · 1' Thiên: kịch bản 3 — Q2 ba chunker ba câu trả lời (20k / 10k / cả hai) và bài học `document_version`. · Q&A. App mở sẵn, cache đã nóng, `ket_qua_benchmark.txt` của 3 người đã chạy trước.
 
 **Bài học rút ra khi so sánh trong nhóm:**
-> Cùng 8 file, cùng 5 câu, chỉ đổi một dòng chunker mà điểm dao động 4–7/10. Thứ quyết định không phải chunk "thông minh" hay không mà là **khối thông tin có bị tách khỏi ngữ cảnh gần nó không**: overlap (Fixed) hoặc ranh giới do người soạn định sẵn (Heading) đều giữ được, còn Recursive không overlap cắt bullet list thành từng dòng rồi thua ở chính những câu hỏi số liệu. Q3 thua ở cả ba chiến lược cho thấy giới hạn nằm ở query/corpus (tiếng Việt hỏi corpus tiếng Anh, "05 days") chứ chunker không cứu được.
+> Cùng 16 file, cùng 5 câu, chỉ đổi một dòng chunker mà điểm dao động 7–9/10; nhưng đổi *dữ liệu* (thêm bản VI) dịch chuyển cả ba chiến lược nhiều hơn thế. Trong phần chunking, thứ quyết định là **khối thông tin có bị tách khỏi ngữ cảnh gần nó không**: Heading giữ nguyên khối bullet dưới tiêu đề nên thắng ở 4/5 câu; Recursive không overlap và Fixed cắt mù đều để bullet có từ vựng gần câu hỏi thắng bullet có số liệu. Q2 dạy thêm một điều: chunker không chỉ ảnh hưởng *có tìm thấy hay không* mà cả *agent trả lời con số nào* khi corpus tự mâu thuẫn.
 
 **Nếu làm lại, nhóm sẽ thay đổi gì trong chiến lược dữ liệu (data strategy)?**
-> (1) Tách `library-faq` và `borrowing-privilege` thành các file nhỏ theo đối tượng thay vì `audience=all`, để filter không phải đánh đổi recall. (2) Ghi `document_version` bằng ngày cập nhật trang (lấy từ sitemap `lastmod`) thay vì `not-stated`, để agent có căn cứ ưu tiên nguồn mới hơn khi hai trang mâu thuẫn. (3) Bỏ nội dung lặp giữa các trang (phòng học, thiết bị xuất hiện ở 3 file) — lặp làm top-3 bị chiếm bởi cùng một đoạn từ nhiều file, không thêm thông tin. (4) Thêm overlap cho RecursiveChunker hoặc bỏ separator `\n` đơn với văn bản dạng bullet.
+> (1) Dịch/lấy bản tiếng Việt **ngay từ đầu** thay vì sau khi thấy Q3 fail — hoặc chọn nguồn có sẵn tiếng Việt. (2) Tách `library-faq` và `borrowing-privilege` thành các file nhỏ theo đối tượng thay vì `audience=all`, để filter không phải đánh đổi recall. (3) Ghi `document_version` bằng ngày cập nhật trang (lấy từ sitemap `lastmod`) thay vì `not-stated`, để agent có căn cứ ưu tiên nguồn mới hơn khi hai trang mâu thuẫn. (4) Bỏ nội dung lặp giữa các trang (phòng học, thiết bị xuất hiện ở 3 file × 2 ngôn ngữ) — lặp làm top-3 bị chiếm bởi cùng một đoạn, không thêm thông tin. (5) Thêm overlap cho RecursiveChunker hoặc bỏ separator `\n` đơn với văn bản dạng bullet.
 
 ---
 

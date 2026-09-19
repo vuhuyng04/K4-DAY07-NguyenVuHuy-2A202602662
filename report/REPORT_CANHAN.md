@@ -147,31 +147,27 @@ Embedder: OpenAI `text-embedding-3-small` (1536 chiều). Dự đoán được g
 
 Chạy **5 câu hỏi đánh giá của nhóm** trên mã nguồn cá nhân của bạn trong gói `src`. **5 câu hỏi này phải trùng với các thành viên cùng nhóm** (xem `REPORT_NHOM.md`).
 
-**Cấu hình:** `bench.py` với `CHUNKER = RecursiveChunker(chunk_size=500)` (chiến lược của tôi), corpus `data/thu-vien-vinuni/` (8 tài liệu → 81 chunks), embedder OpenAI `text-embedding-3-small`, LLM `gpt-4o-mini`, `top_k=3`. Output đầy đủ: `ket_qua_benchmark.txt`.
+**Cấu hình:** `bench.py` với `CHUNKER = RecursiveChunker(chunk_size=500)` (chiến lược của tôi), corpus `data/thu-vien-vinuni/` (8 trang × 2 ngôn ngữ = 16 file → 152 chunks), embedder OpenAI `text-embedding-3-small`, LLM `gpt-4o-mini`, `top_k=3`. Output đầy đủ: `ket_qua_benchmark.txt`. *(Lần chạy đầu trên corpus chỉ tiếng Anh, 81 chunks: 4/10 — Q3 và Q4 0đ.)*
 
 | # | Câu hỏi (Query) | Top-1 Chunk truy xuất được (tóm tắt) | Điểm Score | Có liên quan không? (Relevant) | Câu trả lời của Agent (tóm tắt) |
 |---|-------|--------------------------------|-------|-----------|------------------------|
-| 1 | Tôi được mượn tối đa bao nhiêu cuốn sách và trong bao lâu? *(filter `audience=student`)* | `borrowing-undergraduate-staff` — đoạn *Equipment loans* (1 working day…) | 0.230 | Đúng file, sai section; chunk có đáp án ("3 items / two weeks") ở **hạng 3** (0.215) | "Tối đa 3 cuốn trong 2 tuần [3]" — **đúng** |
-| 2 | Mức phạt trả sách muộn là bao nhiêu tiền một ngày? | `library-faq` — "Normal material: 20,000 VND/day overdue" | 0.465 | **Có**, top-1 chứa đáp án | "10,000 VND mỗi ngày làm việc [3]" — **sai nguồn**: agent lấy từ chunk [3] (trang faculty) thay vì [1] (FAQ) |
-| 3 | Thiết bị mượn quá hạn bao nhiêu ngày thì bị coi là mất? | `borrowing-graduate-faculty` — "You will be fined for returning items late…" | 0.309 | **Không** — chunk chứa "overdue for more than 05 days" không lọt top-3 | "Không tìm thấy trong tài liệu" |
-| 4 | Một nhóm được đặt phòng học nhóm tối đa bao nhiêu giờ mỗi buổi…? | `borrowing-graduate-faculty` — bullet "Study rooms are for group study only. At least 2 people…" | 0.416 | Đúng chủ đề, **sai chunk**: bullet "2 hours per session, 2 sessions per day, 4 sessions per week" nằm ở chunk liền trước, không lọt top-3 | "Không tìm thấy trong tài liệu" |
-| 5 | Giờ mở cửa thư viện từ tháng 9 là khi nào? | `hours-and-access` — đoạn giờ **tháng 7–8** (8:45 am – 5:00 pm) | 0.417 | Đúng file, chunk có đáp án (tháng 9) ở **hạng 2** (0.391) | "Thứ Hai–Sáu 8:45–21:00, Thứ Bảy–CN 9:00–17:00 [2]" — **đúng** |
+| 1 | Tôi được mượn tối đa bao nhiêu cuốn sách và trong bao lâu? *(filter `audience=student`)* | `borrowing-undergraduate-staff-vi` — đoạn *Yêu cầu và giữ chỗ* | 0.607 | Đúng file, sai section; chunk có đáp án ("3 tài liệu, hai tuần") ở **hạng 2** (0.606) | "Tối đa 3 cuốn, hai tuần mỗi cuốn [2]" — **đúng** |
+| 2 | Mức phạt trả sách muộn là bao nhiêu tiền một ngày? | `library-faq-vi` — mục 7 "Thư viện thu tiền phạt quá hạn… 20.000 VND/ngày" | 0.580 | **Có**, top-1 chứa đáp án | "20.000 VND/ngày quá hạn/tài liệu" — **đúng** |
+| 3 | Thiết bị mượn quá hạn bao nhiêu ngày thì bị coi là mất? | `equipment-loans-vi` — "Thiết bị quá hạn hơn 05 ngày sẽ bị coi là mất" | 0.710 | **Có**, top-1 chứa đáp án | "Quá hạn hơn 05 ngày → coi là mất, bồi thường [1], [2]" — **đúng** |
+| 4 | Một nhóm được đặt phòng học nhóm tối đa bao nhiêu giờ mỗi buổi…? | `borrowing-graduate-faculty-vi` — bullet "Phòng chỉ dùng để học nhóm. Phải có ít nhất 2 người…" | 0.695 | Đúng chủ đề, **sai chunk**: bullet "2 giờ mỗi buổi… 4 buổi mỗi tuần" ở **hạng 3** (0.628) | "2 giờ mỗi buổi và 4 buổi mỗi tuần [3]" — **đúng** |
+| 5 | Giờ mở cửa thư viện từ tháng 9 là khi nào? | `hours-and-access-vi` — đoạn mở đầu, giờ **tháng 7–8** | 0.688 | Đúng file, chunk có đáp án (FAQ-vi mục 1, "8h45 – 21h00") ở **hạng 2** (0.664) | "Thứ Hai–Sáu 8h45–21h00, Thứ Bảy–CN 9h–17h" — **đúng** |
 
-**Bao nhiêu câu hỏi trả về chunk có liên quan trong top-3?** 3 / 5 (Q1, Q2, Q5). Điểm theo thang 2đ/câu của `docs/SCORING.md`: **4 / 10** (Q1: 1, Q2: 2, Q3: 0, Q4: 0, Q5: 1).
+**Bao nhiêu câu hỏi trả về chunk có liên quan trong top-3?** 5 / 5. Điểm theo thang 2đ/câu của `docs/SCORING.md`: **7 / 10** (Q1: 1, Q2: 2, Q3: 2, Q4: 1, Q5: 1). Agent trả lời đúng cả 5 câu.
 
-**A/B metadata filter (Q1):** có filter → chunk đáp án ở top-3 (1đ); **không filter → 0đ**, top-3 toàn chunk phạt tiền của FAQ và trang faculty (score 0.31–0.32 > 0.23 của trang undergraduate). Similarity xếp "chủ đề mượn sách" cao hơn "đúng đối tượng"; filter là thứ duy nhất tách được hai trang cùng từ vựng khác đáp án.
+**Ngôn ngữ chi phối retrieval:** 15/15 chunk top-3 đều là bản VI, không chunk EN nào lọt dù nội dung y hệt — score cùng ngôn ngữ 0.6–0.7, ép `language=en` chỉ còn 0.23–0.25. Đây là lý do Q3 từ 0đ (corpus EN) lên 2đ.
 
-**Hai mức chấm khác nhau ra sao:** nếu chỉ kiểm `doc_id` gold có trong top-3, tôi được 8/10; kiểm thêm chunk có chứa đáp án thì còn 4/10. Chênh lệch nằm ở Q1, Q4, Q5 — top-3 đúng file nhưng chunk chứa số liệu không ở top-1 (Q1, Q5) hoặc không có trong top-3 (Q4).
+**A/B metadata filter (Q1):** có filter → chunk đáp án ở hạng 2 (1đ); **không filter → 0đ**, top-3 là `borrowing-graduate-faculty-vi` (0.62–0.66: *"Học viên sau đại học được mượn tối đa 5 tài liệu"*) — cùng câu chữ, sai đối tượng; agent sẽ trả lời 5 tài liệu / 1 tháng. Filter là thứ duy nhất tách được hai trang.
 
-**Failure case (Bài 3.5) — Q4:** RecursiveChunker cắt ở `
+**Hai mức chấm khác nhau ra sao:** nếu chỉ kiểm `doc_id` gold có trong top-3, tôi được 10/10; kiểm thêm chunk có chứa đáp án thì còn 7/10. Chênh lệch nằm ở Q1, Q4, Q5 — top-3 toàn đúng file nhưng chunk chứa số liệu ở hạng 2–3, vì chunk có *từ vựng* gần câu hỏi hơn thắng chunk có *số liệu*.
 
-` rồi `
-` trước, nên danh sách bullet bị tách từng dòng rồi mới gom lại đến 500 ký tự; ranh giới chunk rơi đúng giữa bullet "2 hours per session…" và bullet "Study rooms are for group study only…". Chunk sau có từ vựng gần câu hỏi hơn (group, session) nên lọt top-1, chunk trước chứa đáp án thì rớt. Không có overlap nên mỗi thông tin chỉ có đúng một cơ hội. FixedSize(500, overlap=50) và HeadingChunker đều được 2/2 ở câu này vì giữ trọn khối bullet. **Đề xuất:** thêm overlap cho RecursiveChunker, hoặc không dùng `
-` đơn làm separator với văn bản dạng bullet (giữ `
+**Failure case (Bài 3.5) — Q4:** RecursiveChunker cắt ở `\n\n` rồi `\n` trước, nên danh sách bullet bị tách từng dòng rồi mới gom lại đến 500 ký tự; bullet *"Phòng chỉ dùng để học nhóm. Phải có ít nhất 2 người…"* có từ vựng (nhóm, buổi) gần câu hỏi hơn nên lên top-1, bullet *"2 giờ mỗi buổi, 2 buổi mỗi ngày, 4 buổi mỗi tuần"* rớt hạng 3. Không có overlap nên mỗi thông tin chỉ có đúng một cơ hội. HeadingChunker (Phong) được 2/2 ở câu này vì giữ trọn khối bullet dưới `## Phòng học nhóm`. **Đề xuất:** thêm overlap cho RecursiveChunker, hoặc không dùng `\n` đơn làm separator với văn bản dạng bullet.
 
-`, `. `, ` `).
-
-**Failure case thứ hai — Q2 (grounding):** top-1 là FAQ (20.000 VND/ngày) nhưng agent trả lời 10.000 VND từ chunk [3] (trang graduate/faculty, "per business day"). Hai trang chính thức của cùng thư viện mâu thuẫn nhau; corpus không có `document_version` để phân xử (cả hai `not-stated`, FAQ ghi 2024). Bài học: chấm "top-3 có chunk liên quan" chưa đủ, phải đọc agent answer; và `document_version` không phải trường hình thức.
+**Failure case thứ hai — Q2 (grounding, so sánh trong nhóm):** cùng câu hỏi, Fixed (Thiên) đưa chunk trang faculty lên top-1 và agent trả lời **10.000 VND/ngày làm việc**, còn Recursive của tôi giữ trọn mục FAQ nên agent trả lời **20.000 VND/ngày**. Hai trang chính thức của cùng thư viện mâu thuẫn; corpus không phân xử được vì `document_version` cả hai đều `not-stated`. Bài học: chunker ảnh hưởng cả *con số agent nói ra*, không chỉ có tìm thấy hay không; và `document_version` cần có thật.
 
 **Điều hay nhất tôi học được từ thành viên khác / nhóm khác (qua demo):**
 > Từ Thiên: FixedSize "ngu" nhưng có overlap 50 thắng Recursive "thông minh" không overlap ở đúng hai câu số liệu (Q4, Q5) — overlap không phải chi tiết phụ, nó là bảo hiểm cho thông tin nằm sát ranh giới. Từ Phong: gắn lại heading vào từng mảnh con khi cắt section dài làm chunk tự mô tả, agent trích dẫn dễ hơn và người xem demo đọc hiểu chunk ngay. Nếu làm lại tôi sẽ thêm overlap cho RecursiveChunker và bỏ separator `
