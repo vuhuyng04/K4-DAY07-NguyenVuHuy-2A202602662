@@ -14,6 +14,7 @@ demo_app.py — giao diện demo trực quan cho Lab 07 (Streamlit).
 from __future__ import annotations
 
 import hashlib
+import html as _html
 import os
 import re
 import sys
@@ -595,15 +596,110 @@ with tab_query:
 # ============================================================================
 # Tab 3 — Xem chunk
 # ============================================================================
+def _overlap_len(prev: str, cur: str) -> int:
+    """Số ký tự đầu của `cur` trùng với đuôi của `prev` (overlap thật giữa 2 chunk liền kề)."""
+    m = min(len(prev), len(cur))
+    for k in range(m, 9, -1):  # bỏ qua trùng dưới 10 ký tự (khoảng trắng, dấu câu)
+        if prev.endswith(cur[:k]):
+            return k
+    return 0
+
+
+def _locate(body: str, chunk: str) -> tuple[int, int]:
+    """Vị trí chunk trong văn bản gốc; Heading gắn lại tiêu đề nên thử phần sau dòng đầu."""
+    i = body.find(chunk)
+    if i >= 0:
+        return i, i + len(chunk)
+    if "\n" in chunk:
+        rest = chunk.split("\n", 1)[1].strip()
+        i = body.find(rest)
+        if i >= 0:
+            return i, i + len(rest)
+    return -1, -1
+
+
+def _render_chunk_html(text: str, overlap_n: int, heading_repeat: str | None, hl: str) -> str:
+    """Tô vàng phần overlap với chunk trước, xanh heading gắn lại, đỏ chuỗi tìm kiếm."""
+    def esc(t: str) -> str:
+        return _html.escape(t).replace("\n", "<br>")
+
+    parts = []
+    pos = 0
+    if heading_repeat and text.startswith(heading_repeat):
+        parts.append(f'<span style="background:#cde8ff;border-radius:3px">{esc(heading_repeat)}</span>')
+        pos = len(heading_repeat)
+    if overlap_n > pos:
+        parts.append(f'<span style="background:#ffe08a;border-radius:3px">{esc(text[pos:overlap_n])}</span>')
+        pos = overlap_n
+    parts.append(esc(text[pos:]))
+    out = "".join(parts)
+    if hl:
+        out = re.sub(re.escape(_html.escape(hl)), lambda m: f'<mark style="background:#ffb3b3">{m.group(0)}</mark>', out, flags=re.IGNORECASE)
+    return f'<div style="font-family:monospace;font-size:0.85em;white-space:pre-wrap;line-height:1.45">{out}</div>'
+
+
 with tab_chunks:
     doc_pick = st.selectbox("Tài liệu", sorted(per_doc))
     chunks = [r for r in store._store if r["metadata"]["doc_id"] == doc_pick]
-    st.caption(f"{strategy} · {len(chunks)} chunk · độ dài TB {sum(len(c['content']) for c in chunks) / max(1, len(chunks)):.0f} ký tự")
-    hl = st.text_input("Tô sáng chunk chứa chuỗi", value="")
-    for r in chunks:
-        mark = " ✅" if hl and hl.lower() in r["content"].lower() else ""
-        with st.expander(f"chunk {r['metadata']['chunk_index']} · {len(r['content'])} ký tự · {r['content'][:60].replace(chr(10), ' ')}…{mark}"):
-            st.text(r["content"])
+    body_path = bench.CORPUS_DIR / f"{doc_pick}.md"
+    _, body = bench.parse_front_matter(body_path.read_text(encoding="utf-8")) if body_path.exists() else ({}, "")
+    n = len(chunks)
+    avg = sum(len(c["content"]) for c in chunks) / max(1, n)
+
+    # --- overlap giữa các chunk liền kề + heading lặp lại
+    overlaps = [0]
+    head_rep: list[str | None] = [None]
+    for i in range(1, n):
+        prev, cur = chunks[i - 1]["content"], chunks[i]["content"]
+        overlaps.append(_overlap_len(prev, cur))
+        h_prev = prev.split("\n", 1)[0]
+        head_rep.append(h_prev if (h_prev.startswith("#") and cur.startswith(h_prev)) else None)
+    total_ov = sum(overlaps)
+    n_head = sum(1 for h in head_rep if h)
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Số chunk", n)
+    m2.metric("Độ dài TB", f"{avg:.0f} ký tự")
+    m3.metric("Ký tự overlap (tổng)", total_ov, help="Phần đầu chunk i trùng với phần đuôi chunk i−1")
+    m4.metric("Heading gắn lại", n_head, help="Chunk bắt đầu bằng đúng tiêu đề của chunk trước (HeadingChunker)")
+    st.caption(f"Chiến lược: **{strategy}** · văn bản gốc {len(body)} ký tự · tổng ký tự trong chunk {sum(len(c['content']) for c in chunks)} "
+               f"(= gốc + overlap + heading lặp)")
+
+    # --- bản đồ vị trí chunk trên văn bản gốc
+    if body:
+        st.markdown("**Bản đồ vị trí chunk trên văn bản gốc** — mỗi thanh là một chunk; chỗ hai thanh chồng lên nhau là overlap (đậm hơn).")
+        L = max(1, len(body))
+        bars = []
+        colors = ["#4c78a8", "#f58518", "#54a24b", "#e45756", "#72b7b2", "#b279a2"]
+        for i, r in enumerate(chunks):
+            a, b = _locate(body, r["content"])
+            if a < 0:
+                continue
+            left, width = 100 * a / L, max(0.3, 100 * (b - a) / L)
+            top = 0 if i % 2 == 0 else 14
+            bars.append(
+                f'<div title="chunk {i}: {a}–{b} ({b-a} ký tự)" style="position:absolute;left:{left:.2f}%;width:{width:.2f}%;top:{top}px;height:12px;'
+                f'background:{colors[i % len(colors)]};opacity:0.75;border-radius:2px"></div>'
+            )
+        st.markdown(
+            f'<div style="position:relative;height:30px;background:#f0f0f0;border-radius:4px;margin:4px 0 12px 0">{"".join(bars)}</div>',
+            unsafe_allow_html=True,
+        )
+
+    hl = st.text_input("Tô đỏ chuỗi (ví dụ: 2 giờ mỗi buổi / 2 hours per session)", value="")
+    st.markdown(
+        '<span style="background:#ffe08a;padding:0 4px;border-radius:3px">vàng = overlap với chunk trước</span> &nbsp; '
+        '<span style="background:#cde8ff;padding:0 4px;border-radius:3px">xanh = heading gắn lại</span> &nbsp; '
+        '<span style="background:#ffb3b3;padding:0 4px;border-radius:3px">đỏ = chuỗi tìm</span>',
+        unsafe_allow_html=True,
+    )
+    for i, r in enumerate(chunks):
+        found = bool(hl) and hl.lower() in r["content"].lower()
+        tag = " ✅" if found else ""
+        ov = f" · overlap {overlaps[i]}" if overlaps[i] else ""
+        hd = " · heading lặp" if head_rep[i] else ""
+        with st.expander(f"chunk {r['metadata']['chunk_index']} · {len(r['content'])} ký tự{ov}{hd} · {r['content'][:55].replace(chr(10), ' ')}…{tag}", expanded=found):
+            st.markdown(_render_chunk_html(r["content"], overlaps[i], head_rep[i], hl), unsafe_allow_html=True)
 
 
 # ============================================================================
