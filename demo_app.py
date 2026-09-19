@@ -109,6 +109,45 @@ def render_results(results: list[dict], must_contain: str = "", gold=None, chars
             st.text(r["content"][:chars] + ("…" if len(r["content"]) > chars else ""))
 
 
+FILTER_SKIP = {"chunk_index", "source", "retrieved_at", "title", "source_url"}
+
+
+def metadata_options(store: EmbeddingStore) -> dict[str, list[str]]:
+    """Mọi trường metadata có trong store (trừ trường kỹ thuật) → danh sách giá trị."""
+    opts: dict[str, set] = {}
+    for r in store._store:
+        for k, v in r["metadata"].items():
+            if k in FILTER_SKIP or v is None:
+                continue
+            opts.setdefault(k, set()).add(str(v))
+    order = ["audience", "category", "department", "language", "document_version", "doc_id"]
+    keys = [k for k in order if k in opts] + sorted(k for k in opts if k not in order)
+    return {k: sorted(opts[k]) for k in keys}
+
+
+def count_candidates(store: EmbeddingStore, flt: dict | None) -> int:
+    if not flt:
+        return len(store._store)
+    return sum(1 for r in store._store if all(str(r["metadata"].get(k)) == str(v) for k, v in flt.items()))
+
+
+def filter_builder(store: EmbeddingStore, key: str, default: dict | None = None) -> dict | None:
+    """Widget chọn nhiều trường metadata → dict filter (hoặc None)."""
+    opts = metadata_options(store)
+    default = default or {}
+    fields = st.multiselect("Lọc theo trường", list(opts), default=[k for k in default if k in opts], key=f"{key}_fields")
+    flt: dict = {}
+    if fields:
+        cols = st.columns(len(fields))
+        for col, f in zip(cols, fields):
+            vals = opts[f]
+            idx = vals.index(str(default[f])) if f in default and str(default[f]) in vals else 0
+            flt[f] = col.selectbox(f, vals, index=idx, key=f"{key}_{f}")
+    n = count_candidates(store, flt or None)
+    st.caption(f"metadata_filter = `{flt or None}` → **{n}/{len(store._store)}** chunk còn lại làm ứng viên")
+    return flt or None
+
+
 def run_query(store: EmbeddingStore, q: dict, top_k: int, use_filter: bool = True) -> tuple[list[dict], int, str]:
     flt = q["filter"] if use_filter else None
     res = store.search_with_filter(q["q"], top_k=top_k, metadata_filter=flt)
@@ -180,7 +219,7 @@ tab_demo, tab_query, tab_chunks, tab_notes = st.tabs(["🎬 Kịch bản demo", 
 # Tab 1 — Kịch bản demo chọn sẵn
 # ============================================================================
 SCENARIOS = {
-    "1 · Metadata filter A/B — Q1 (0đ → 2đ chỉ bằng một dòng filter)": "filter",
+    "1 · Metadata filter — 5 phần: 3 đối tượng · trường bất kỳ · lọc trước/sau · mất recall · lọc sai trường": "filter",
     "2 · So sánh chiến lược chunking — Q4 (bullet bị tách, ai giữ được khối?)": "chunking",
     "3 · Nguồn chính thức mâu thuẫn — Q2 (FAQ 20.000 vs faculty 10.000 VND)": "conflict",
     "4 · Failure case cross-lingual — Q3 (cả 3 chiến lược 0đ)": "failure",
@@ -196,29 +235,121 @@ with tab_demo:
     # ---------------------------------------------------------------- 1
     if kind == "filter":
         q = Q["Q1"]
-        st.markdown(f"**Câu hỏi:** {q['q']}  \n**Gold:** `{q['gold_doc']}` · must_contain=`{q['must_contain']}` · filter=`{q['filter']}`")
         strat = st.selectbox("Chiến lược", MAIN3, key="s1")
-        if run:
-            s_store, _, _ = build_store(strat, fp)
-            c1, c2 = st.columns(2)
-            with c1:
-                st.subheader("✅ Có filter `audience=student`")
-                res_f, sc_f, why_f = run_query(s_store, q, top_k, True)
-                st.markdown(f"### Điểm: {sc_f}/2 — {why_f}")
-                render_results(res_f, q["must_contain"], q["gold_doc"])
-            with c2:
-                st.subheader("❌ Không filter")
-                res_n, sc_n, why_n = run_query(s_store, q, top_k, False)
-                st.markdown(f"### Điểm: {sc_n}/2 — {why_n}")
-                render_results(res_n, q["must_contain"], q["gold_doc"])
-            st.subheader("🤖 Agent answer (có filter)")
-            st.success(agent_answer(s_store, llm, q["q"], res_f))
-            st.info(
-                "**Điểm nhấn:** Câu hỏi không nói người hỏi là ai. Corpus có trang undergraduate (3 items / 2 weeks) "
-                "và trang graduate/faculty (5 items / 1 month) cùng câu chữ. Không filter, top-3 là chunk phạt tiền của FAQ "
-                "và trang faculty — similarity đo *cùng chủ đề mượn sách*, không đo *đúng đối tượng*. "
-                "Mặt trái: filter `student` loại luôn `borrowing-privilege` và `library-faq` (audience=all) — hai trang có bảng đầy đủ nhất."
-            )
+        part = st.radio(
+            "Phần",
+            [
+                "A · Cùng câu hỏi, 3 đối tượng (không lọc / student / faculty)",
+                "B · Lọc theo trường bất kỳ (category, department, doc_id, …)",
+                "C · Lọc TRƯỚC vs lọc SAU top-k",
+                "D · Filter làm hại — mất recall",
+                "E · Lọc sai trường — đáp án nằm ngoài tập lọc",
+            ],
+            horizontal=False,
+            key="s1_part",
+        )
+        s_store, _, _ = build_store(strat, fp)
+
+        if part.startswith("A"):
+            st.markdown(f"**Câu hỏi:** {q['q']}  \n**Gold:** `{q['gold_doc']}` · must_contain=`{q['must_contain']}`")
+            if run:
+                cols = st.columns(3)
+                for col, (label, flt) in zip(cols, [("❌ Không lọc", None), ("🎓 audience=student", {"audience": "student"}), ("👩‍🏫 audience=faculty", {"audience": "faculty"})]):
+                    with col:
+                        st.subheader(label)
+                        res = s_store.search_with_filter(q["q"], top_k=top_k, metadata_filter=flt)
+                        sc, why = bench.grade(res, q["gold_doc"], q["must_contain"])
+                        st.caption(f"ứng viên: **{count_candidates(s_store, flt)}** chunk")
+                        st.markdown(f"### {sc}/2")
+                        st.caption(why + " *(gold = trang undergraduate)*")
+                        render_results(res, q["must_contain"], q["gold_doc"], chars=260)
+                        st.markdown("**🤖 Agent:**")
+                        st.success(agent_answer(s_store, llm, q["q"], res))
+                st.info(
+                    "**Điểm nhấn:** Cùng một câu hỏi, đổi `audience` là đổi câu trả lời — *3 cuốn / 2 tuần* (student) hay "
+                    "*5 cuốn / 1 tháng* (faculty). Không lọc thì top-3 là chunk phạt tiền của FAQ và trang faculty: similarity đo "
+                    "*chủ đề mượn sách*, không đo *đúng đối tượng*. Metadata là thứ duy nhất trả lời được 'ai đang hỏi'."
+                )
+
+        elif part.startswith("B"):
+            st.markdown("Dựng filter từ **bất kỳ trường metadata nào** trong front matter — kết hợp nhiều trường (AND).")
+            question = st.text_input("Câu hỏi", value=q["q"], key="s1b_q")
+            flt = filter_builder(s_store, key="s1b")
+            if run and question.strip():
+                res = s_store.search_with_filter(question, top_k=top_k, metadata_filter=flt)
+                render_results(res, chars=300)
+                st.markdown("**🤖 Agent:**")
+                st.success(agent_answer(s_store, llm, question, res))
+                st.info(
+                    "**Điểm nhấn:** `search_with_filter` so khớp `==` trên mọi cặp key/value → lọc được theo `category` "
+                    "(fees / borrowing / access / spaces / faq), `doc_id` (một file), `language`, `document_version`… "
+                    "Filter càng chặt, ứng viên càng ít — xem số chunk còn lại ở trên."
+                )
+
+        elif part.startswith("C"):
+            st.markdown(f"**Câu hỏi:** {q['q']} · filter `audience=student`")
+            if run:
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.subheader("✅ Lọc TRƯỚC rồi search (cách đúng)")
+                    res = s_store.search_with_filter(q["q"], top_k=top_k, metadata_filter=q["filter"])
+                    st.caption(f"{count_candidates(s_store, q['filter'])} ứng viên → top-{top_k}")
+                    render_results(res, q["must_contain"], q["gold_doc"], chars=260)
+                with c2:
+                    st.subheader("❌ Search top-k rồi mới lọc (lỗi hay gặp)")
+                    plain = s_store.search(q["q"], top_k=top_k)
+                    post = [r for r in plain if r["metadata"].get("audience") == "student"]
+                    st.caption(f"{len(s_store._store)} ứng viên → top-{top_k} → lọc còn **{len(post)}**")
+                    st.markdown("Top-k trước khi lọc:")
+                    render_results(plain, q["must_contain"], q["gold_doc"], chars=120)
+                    st.markdown(f"Sau khi lọc: **{len(post)} kết quả**")
+                    render_results(post, q["must_contain"], q["gold_doc"], chars=260)
+                st.info(
+                    "**Điểm nhấn:** Lọc sau top-k thì k slot đã bị chunk sai chiếm hết → **0 kết quả** dù store còn 13 chunk hợp lệ. "
+                    "Đây là lỗi `docs/EVALUATION.md` và lab doc nhắc thẳng: *search_with_filter lọc SAU khi search thay vì trước*. "
+                    "Code của nhóm lọc trước, rồi cho cả `search()` và `search_with_filter()` đi chung `_search_records()`."
+                )
+
+        elif part.startswith("D"):
+            qh = "Giảng viên được mượn sách tối đa trong bao lâu?"
+            st.markdown(f"**Câu hỏi:** {qh}  \n**Đáp án đúng:** *up to 6 months* (faculty mượn giáo trình) — nằm trong `borrowing-privilege` và `library-faq`, cả hai `audience=all`.")
+            if run:
+                c1, c2 = st.columns(2)
+                for col, (label, flt) in zip((c1, c2), [("❌ Không lọc", None), ("👩‍🏫 audience=faculty", {"audience": "faculty"})]):
+                    with col:
+                        st.subheader(label)
+                        res = s_store.search_with_filter(qh, top_k=top_k, metadata_filter=flt)
+                        st.caption(f"ứng viên: **{count_candidates(s_store, flt)}** chunk")
+                        render_results(res, "6 months", ["borrowing-privilege", "library-faq"], chars=260)
+                        st.markdown("**🤖 Agent:**")
+                        st.success(agent_answer(s_store, llm, qh, res))
+                st.info(
+                    "**Điểm nhấn:** Filter `audience=faculty` **loại luôn** hai trang `audience=all` — là nơi duy nhất ghi *6 months* — "
+                    "nên agent chỉ còn *one month* của graduate. Precision đổi bằng recall. Cách sửa dữ liệu: gán `audience` ở mức "
+                    "section (tách bảng hạn mức thành nhiều file), hoặc cho phép filter `audience in {faculty, all}`."
+                )
+
+        elif part.startswith("E"):
+            q2 = Q["Q2"]
+            st.markdown(f"**Câu hỏi:** {q2['q']}  \n**Đáp án:** *20,000 VND/day* — nằm trong `library-faq` (`category=faq`), **không** nằm trong `fines-and-charges` (`category=fees`).")
+            if run:
+                c1, c2 = st.columns(2)
+                for col, (label, flt) in zip((c1, c2), [("❌ Không lọc", None), ("💸 category=fees (nghe hợp lý!)", {"category": "fees"})]):
+                    with col:
+                        st.subheader(label)
+                        res = s_store.search_with_filter(q2["q"], top_k=top_k, metadata_filter=flt)
+                        sc, why = bench.grade(res, q2["gold_doc"], q2["must_contain"])
+                        st.caption(f"ứng viên: **{count_candidates(s_store, flt)}** chunk")
+                        st.markdown(f"### {sc}/2")
+                        st.caption(why)
+                        render_results(res, q2["must_contain"], q2["gold_doc"], chars=260)
+                        st.markdown("**🤖 Agent:**")
+                        st.success(agent_answer(s_store, llm, q2["q"], res))
+                st.info(
+                    "**Điểm nhấn:** `category=fees` nghe rất đúng cho câu hỏi về tiền phạt, nhưng trang *Fines and other charges* "
+                    "chỉ nói về phí hư hỏng — con số 20.000 VND/ngày lại ở FAQ. Metadata chỉ tốt khi **schema khớp với câu hỏi thật**; "
+                    "gán nhãn theo tiêu đề trang mà không đọc nội dung là bẫy."
+                )
 
     # ---------------------------------------------------------------- 2
     elif kind == "chunking":
@@ -339,17 +470,15 @@ with tab_query:
     presets = {f"{k}: {q['q']}": q for k, q in Q.items()}
     choice = st.selectbox("Chọn benchmark query hoặc tự gõ", ["(tự gõ)"] + list(presets))
     preset = presets.get(choice)
-    col_q, col_f = st.columns([3, 1])
-    question = col_q.text_input("Câu hỏi", value=preset["q"] if preset else "")
-    default_aud = preset["filter"]["audience"] if (preset and preset["filter"]) else "(không lọc)"
-    aud = col_f.selectbox("metadata_filter audience", list(AUDIENCES), index=list(AUDIENCES).index(default_aud))
+    question = st.text_input("Câu hỏi", value=preset["q"] if preset else "")
+    flt_free = filter_builder(store, key=f"free_{choice}", default=preset["filter"] if preset else None)
     must = preset["must_contain"] if preset else ""
     gold = preset["gold_doc"] if preset else None
     if preset:
         st.caption(f"gold_doc = `{gold}` · must_contain = `{must}`")
 
     if st.button("Chạy truy vấn", type="primary", disabled=not question.strip()):
-        flt = AUDIENCES[aud]
+        flt = flt_free
         filtered = store.search_with_filter(question, top_k=top_k, metadata_filter=flt)
         if flt:
             c_a, c_b = st.columns(2)
