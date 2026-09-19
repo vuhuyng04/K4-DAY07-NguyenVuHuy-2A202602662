@@ -161,7 +161,7 @@ Chạy **5 câu hỏi đánh giá của nhóm** trên mã nguồn cá nhân củ
 
 **A/B metadata filter (Q1):** có filter → chunk đáp án ở top-3 (1đ); **không filter → 0đ**, top-3 toàn chunk phạt tiền của FAQ và trang faculty (score 0.31–0.32 > 0.23 của trang undergraduate). Similarity xếp "chủ đề mượn sách" cao hơn "đúng đối tượng"; filter là thứ duy nhất tách được hai trang cùng từ vựng khác đáp án.
 
-**Hai mức chấm khác nhau ra sao:** nếu chỉ kiểm `doc_id` gold có trong top-3, tôi được 6/10; kiểm thêm chunk có chứa đáp án thì còn 4/10. Chênh lệch nằm ở Q1 và Q5 — cả ba slot top-3 đều đúng file nhưng chunk chứa số liệu không ở top-1.
+**Hai mức chấm khác nhau ra sao:** nếu chỉ kiểm `doc_id` gold có trong top-3, tôi được 8/10; kiểm thêm chunk có chứa đáp án thì còn 4/10. Chênh lệch nằm ở Q1, Q4, Q5 — top-3 đúng file nhưng chunk chứa số liệu không ở top-1 (Q1, Q5) hoặc không có trong top-3 (Q4).
 
 **Failure case (Bài 3.5) — Q4:** RecursiveChunker cắt ở `
 

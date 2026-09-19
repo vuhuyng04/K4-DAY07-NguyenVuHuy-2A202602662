@@ -165,11 +165,11 @@ Dạng hỏi: Q1 điều kiện theo đối tượng, Q2 tra số liệu, Q3 ng�
 ## 4. Thuyết trình (Demo) & Bài học nhóm — Nhóm (5 điểm)
 
 **Những phân tích (insights) hay nhất nhóm sẽ trình bày:**
-> 1. **Chấm hai mức lật kết quả**: chỉ kiểm `doc_id` gold trong top-3 thì Recursive được 6/10, kiểm chunk có chứa đáp án thì còn 4/10. Chunk đúng chủ đề nhưng không có số liệu thắng chunk có đáp án là lỗi phổ biến nhất của cả ba chiến lược.
+> 1. **Chấm hai mức lật kết quả**: chỉ kiểm `doc_id` gold trong top-3 thì Recursive được 8/10, kiểm chunk có chứa đáp án thì còn 4/10. Chunk đúng chủ đề nhưng không có số liệu thắng chunk có đáp án là lỗi phổ biến nhất của cả ba chiến lược.
 > 2. **A/B filter tại Q1**: 0/2 → 2/2 chỉ bằng một dòng `metadata_filter`; embedding không phân biệt được sinh viên và giảng viên khi hai trang dùng cùng câu chữ.
 > 3. **Nguồn chính thức tự mâu thuẫn**: FAQ nói 20.000 VND/ngày, trang faculty nói 10.000 VND/business day; agent chọn chunk [3]. `document_version` không phải trường hình thức — nhóm không có gì để phân xử vì cả hai `not-stated`.
 
-**Công cụ demo:** `streamlit run demo_app.py` (giao diện 3 tab: truy vấn + A/B filter + agent answer; bảng so sánh 3 chiến lược trên 5 query; xem chunk từng tài liệu). Cache embedding dùng chung với `bench.py` nên demo live không gọi API embedding.
+**Công cụ demo:** `streamlit run demo_app.py` — tab *Kịch bản demo* có 6 tình huống chọn sẵn (A/B metadata filter, so sánh chunking ở Q4, nguồn mâu thuẫn Q2, failure case Q3, chấm hai mức, bảng tổng hợp), tab truy vấn tự do và tab xem chunk; nhập API key ngay trên sidebar. Cache embedding dùng chung với `bench.py` nên demo live không gọi API embedding.
 
 **Kịch bản demo 6–8 phút:**
 > 1' Huy — chủ đề, 8 file, vì sao thư viện VinUni (robots cho phép, 2 trang student/faculty). · 2' mỗi người 40" chiến lược + điểm. · 3' Huy chạy live `python bench.py` (cache → không tốn API), chỉ vào Q1 A/B và Q4 failure; Phong giải thích vì sao Heading thắng Q4/Q5; Thiên giải thích overlap. · 1' Thiên: mâu thuẫn 10k/20k VND và bài học `document_version`. · Q&A. Terminal mở sẵn, `ket_qua_benchmark.txt` của 3 người đã chạy trước.
