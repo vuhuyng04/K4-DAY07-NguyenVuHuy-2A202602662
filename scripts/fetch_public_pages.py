@@ -107,9 +107,23 @@ def robots_allowed(url: str, user_agent: str) -> bool:
         return False
     robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
     parser = RobotFileParser(robots_url)
+    # Fetch robots.txt with the same User-Agent used for the pages themselves.
+    # RobotFileParser.read() would use the default "Python-urllib" UA, which some
+    # WAFs answer with 403 — and the stdlib treats 403 as "disallow everything"
+    # even when the real robots.txt permits access.
     try:
-        parser.read()
-    except (HTTPError, URLError, OSError) as error:
+        with urlopen(Request(robots_url, headers={"User-Agent": user_agent}), timeout=20) as response:
+            body = response.read().decode("utf-8", errors="replace")
+        parser.parse(body.splitlines())
+    except HTTPError as error:
+        if error.code in (401, 403):
+            parser.disallow_all = True
+        elif error.code >= 400:
+            parser.allow_all = True  # no robots.txt → nothing is disallowed
+        else:
+            print(f"Skipping {url}: cannot verify {robots_url} ({error})", file=sys.stderr)
+            return False
+    except (URLError, OSError) as error:
         print(f"Skipping {url}: cannot verify {robots_url} ({error})", file=sys.stderr)
         return False
     if not parser.can_fetch(user_agent, url):

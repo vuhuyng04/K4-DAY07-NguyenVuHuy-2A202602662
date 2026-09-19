@@ -1,0 +1,72 @@
+==============================================================================
+BENCHMARK  | chunker=RecursiveChunker {'separators': ['\n\n', '\n', '. ', ' ', ''], 'chunk_size': 500}
+           | corpus=C:\Users\VUHUY\Desktop\labvinuni20k\K4-DAY07-NguyenVuHuy-2A202602662\data\thu-vien-vinuni  top_k=3
+==============================================================================
+
+[1] Nạp corpus
+  → 81 chunks từ 8 tài liệu
+
+[2] Embedder: text-embedding-3-small   |   LLM: gpt-4o-mini
+  → store size = 81  (cache hit=81 miss=0)
+
+[3] Chạy benchmark
+
+------------------------------------------------------------------------------
+Q1: Tôi được mượn tối đa bao nhiêu cuốn sách và trong bao lâu?
+    gold_doc=borrowing-undergraduate-staff  must_contain='3 items'  filter={'audience': 'student'}
+  Top-3 (filter=có):
+    1. score=0.230  doc_id=borrowing-undergraduate-staff  aud=student  | Equipment can be borrowed during 1 working day. Due time is 15 minutes before library's closing time.  Equipme...
+    2. score=0.225  doc_id=borrowing-undergraduate-staff  aud=student  | You can request books from the VinUni Library online library catalogue. Requests will take one to two business...
+    3. score=0.215  doc_id=borrowing-undergraduate-staff  aud=student  | Undergraduate students may borrow up to 3 items during two weeks per item. Books may be renewed once for one w...
+  → Điểm: 1/2  (chunk chứa đáp án ở hạng 3)
+  [A/B] Top-3 KHÔNG filter:
+    1. score=0.321  doc_id=library-faq                    aud=all      | - Normal material: 20,000 VND/day overdue/document. - Course-specific material: 20,000 VND/hour overdue/docume...
+    2. score=0.313  doc_id=library-faq                    aud=all      | | User groups | Number of items | Loan period | Renewal | |---|---|---|---| | Undergraduate students; Affiliat...
+    3. score=0.309  doc_id=borrowing-graduate-faculty     aud=faculty  | You will be fined for returning items late, or if materials/equipment are damaged or lost. Fines follow VinUni...
+  → Điểm không filter: 0/2  (gold_doc KHÔNG có trong top-k)
+  Agent: Bạn được mượn tối đa 3 cuốn sách trong thời gian 2 tuần cho mỗi cuốn sách [3].
+
+------------------------------------------------------------------------------
+Q2: Mức phạt trả sách muộn là bao nhiêu tiền một ngày?
+    gold_doc=library-faq  must_contain='20,000 VND'  filter=None
+  Top-3 (filter=không):
+    1. score=0.465  doc_id=library-faq                    aud=all      | - Normal material: 20,000 VND/day overdue/document. - Course-specific material: 20,000 VND/hour overdue/docume...
+    2. score=0.389  doc_id=library-faq                    aud=all      | | User groups | Number of items | Loan period | Renewal | |---|---|---|---| | Undergraduate students; Affiliat...
+    3. score=0.382  doc_id=borrowing-graduate-faculty     aud=faculty  | You will be fined for returning items late, or if materials/equipment are damaged or lost. Fines follow VinUni...
+  → Điểm: 2/2  (chunk chứa đáp án ở top-1)
+  Agent: Mức phạt trả sách muộn là 10,000 VND mỗi ngày làm việc sau ngày đến hạn cho mỗi tài liệu [3].
+
+------------------------------------------------------------------------------
+Q3: Thiết bị mượn quá hạn bao nhiêu ngày thì bị coi là mất?
+    gold_doc=['equipment-loans', 'borrowing-undergraduate-staff']  must_contain='05 days'  filter=None
+  Top-3 (filter=không):
+    1. score=0.309  doc_id=borrowing-graduate-faculty     aud=faculty  | You will be fined for returning items late, or if materials/equipment are damaged or lost. Fines follow VinUni...
+    2. score=0.296  doc_id=library-faq                    aud=all      | - Normal material: 20,000 VND/day overdue/document. - Course-specific material: 20,000 VND/hour overdue/docume...
+    3. score=0.294  doc_id=borrowing-graduate-faculty     aud=faculty  | The following equipment is available for loan from the Circulation desk. Items are to be used in the Library o...
+  → Điểm: 0/2  (gold_doc KHÔNG có trong top-k)
+  Agent: Không tìm thấy trong tài liệu.
+
+------------------------------------------------------------------------------
+Q4: Một nhóm được đặt phòng học nhóm tối đa bao nhiêu giờ mỗi buổi và bao nhiêu buổi mỗi tuần?
+    gold_doc=['room-booking', 'borrowing-undergraduate-staff', 'borrowing-graduate-faculty']  must_contain='2 hours per session'  filter=None
+  Top-3 (filter=không):
+    1. score=0.416  doc_id=borrowing-graduate-faculty     aud=faculty  | - Study rooms are for group study only. At least 2 people must be present during a session. If only one person...
+    2. score=0.416  doc_id=borrowing-undergraduate-staff  aud=student  | - Study rooms are for group study only. At least 2 people must be present during a session. If only one person...
+    3. score=0.398  doc_id=borrowing-undergraduate-staff  aud=student  | Second Floor Entrance: Mon – Friday: 8:30 a.m – 5:30 p.m; Sat – Sun: closed.  24/7 learning space: Always open...
+  → Điểm: 0/2  (gold_doc ở hạng 1 nhưng KHÔNG chunk nào chứa '2 hours per session')
+  Agent: Không tìm thấy trong tài liệu.
+
+------------------------------------------------------------------------------
+Q5: Giờ mở cửa thư viện từ tháng 9 là khi nào?
+    gold_doc=hours-and-access  must_contain='8:45 am – 9:00 pm'  filter=None
+  Top-3 (filter=không):
+    1. score=0.417  doc_id=hours-and-access               aud=all      | # Hours and access  ## Hours  Opening hours from July to August:  - Monday to Friday: 8:45 am – 5:00 pm - Satu...
+    2. score=0.391  doc_id=hours-and-access               aud=all      | - Monday to Friday: 8:45 am – 9:00 pm - Saturday and Sunday: 9:00 am – 5:00 pm - The 24/7 learning space will ...
+    3. score=0.360  doc_id=library-faq                    aud=all      | # Library FAQ  ## 1. What are Library operating hours?  Opening hours from July to August, 2024: Monday to Fri...
+  → Điểm: 1/2  (chunk chứa đáp án ở hạng 2)
+  Agent: Giờ mở cửa thư viện từ tháng 9 là từ thứ Hai đến thứ Sáu: 8:45 am – 9:00 pm, và thứ Bảy, Chủ Nhật: 9:00 am – 5:00 pm. Không gian học 24/7 sẽ luôn mở [2].
+
+==============================================================================
+TỔNG: 4/10 điểm   |   có chunk liên quan trong top-3: 3/5
+embedding cache: hit=87 miss=0
+==============================================================================

@@ -1,0 +1,2 @@
+# Giao diện demo (tùy chọn): streamlit run demo_app.py
+streamlit>=1.40

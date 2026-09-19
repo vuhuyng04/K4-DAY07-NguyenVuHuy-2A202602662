@@ -1,0 +1,10 @@
+url,doc_id,title,audience,department,category,language,document_version,license_or_permission
+https://library.vinuni.edu.vn/services/borrow-and-request/undergraduate-and-staff/,borrowing-undergraduate-staff,Borrowing for undergraduate students and staff,student,library,borrowing,en,not-stated,public-source
+https://library.vinuni.edu.vn/services/borrow-and-request/graduate-faculty-and-instructors/,borrowing-graduate-faculty,Borrowing for graduate students faculty and instructors,faculty,library,borrowing,en,not-stated,public-source
+https://library.vinuni.edu.vn/services/borrow-and-request/vingroup-community/,borrowing-vingroup-community,Borrowing for Vingroup community,all,library,borrowing,en,not-stated,public-source
+https://library.vinuni.edu.vn/borrowing-priviledge/,borrowing-privilege,Borrowing privilege by user group,all,library,borrowing,en,not-stated,public-source
+https://library.vinuni.edu.vn/fine-and-other-charges/,fines-and-charges,Fines and other charges,all,library,fees,en,not-stated,public-source
+https://library.vinuni.edu.vn/how-to-borrow-return-renew-books/,how-to-borrow-return-renew,How to borrow return and renew books,all,library,procedure,en,not-stated,public-source
+https://library.vinuni.edu.vn/about-us/hours-and-access/,hours-and-access,Library hours and access,all,library,access,en,not-stated,public-source
+https://library.vinuni.edu.vn/room-booking/,room-booking,Group study room booking,student,library,spaces,en,not-stated,public-source
+https://library.vinuni.edu.vn/faq/,library-faq,Library FAQ,all,library,faq,en,not-stated,public-source
